@@ -11,15 +11,11 @@
     h2 { margin-top:1.5rem; font-size:1.1rem; }
     ul { list-style:none; padding:0; }
     li { display:flex; align-items:center; margin:6px 0; }
-
-    /* remove native number‐input arrows */
     .qty-control input::-webkit-outer-spin-button,
     .qty-control input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
+      -webkit-appearance: none; margin: 0;
     }
     .qty-control input { -moz-appearance: textfield; }
-
     .name { flex:1; font-size:1rem; }
     .unit { font-size:0.7rem; color:#555; margin-left:6px; }
     .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right; }
@@ -38,41 +34,39 @@
   <h1>📋 Stocktake<span id="date"></span></h1>
   <div id="loading">Loading…</div>
   <div id="app" style="display:none;">
-    <h2>KEGS</h2>
-    <ul id="kegList"></ul>
-    <h2>CANS</h2>
-    <ul id="canList"></ul>
+    <h2>KEGS</h2><ul id="kegList"></ul>
+    <h2>CANS</h2><ul id="canList"></ul>
     <button id="completeBtn">Complete</button>
   </div>
 
   <script>
-    const API_URL = 'https://script.google.com/macros/s/AKfycbyJT539HNbZcMqXVm_lXB1lwD1VyFd-mVG-q_nCZaKOKc4zxn7Y38jg_u1hpu3g7q7n/exec';
+    const API = '/api/inventory';
     let items = [];
 
-    // current month abbr, e.g. "JUN"
+    // current month code, e.g. "JUN"
     const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
     const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
     function formatToday() {
       const d = new Date();
       return `${String(d.getDate()).padStart(2,'0')}/${
-        String(d.getMonth()+1).padStart(2,'0')}/${
-        String(d.getFullYear()).slice(-2)}`;
+              String(d.getMonth()+1).padStart(2,'0')}/${
+              String(d.getFullYear()).slice(-2)}`;
     }
 
     async function loadStock() {
       document.getElementById('date').textContent = ' ' + formatToday();
-      const res = await fetch(API_URL);
+      const res = await fetch(API);
       const { stock } = await res.json();
-      // build persistent items[], filtering months ≠ current
+      // build persistent items[], filter months ≠ current
       items = stock.reduce((arr, item) => {
         let raw = (item.rawName||'').trim();
         if (!raw) return arr;
-        raw = raw.replace(/^\d{2}\.\s*/, '');          // drop "02. "
-        const [namePart, infoPart=''] = raw.split('//').map(s=>s.trim());
+        raw = raw.replace(/^\d{2}\.\s*/, '');
+        const [namePart, info=''] = raw.split('//').map(s=>s.trim());
         const prefix = namePart.slice(0,3).toUpperCase();
         if (MONTHS.includes(prefix) && prefix !== curMon) return arr;
-        const unit = infoPart.replace(/.*?%\s*/, '');
+        const unit = info.replace(/.*?%\s*/, '');
         arr.push({
           name: namePart,
           unit,
@@ -88,8 +82,8 @@
     }
 
     function renderLists() {
-      const kegs = items.filter(i => i.unit.toUpperCase().includes('KEG'));
-      const cans = items.filter(i => i.unit.toUpperCase().includes('ML'));
+      const kegs = items.filter(i=>i.unit.toUpperCase().includes('KEG'));
+      const cans = items.filter(i=>i.unit.toUpperCase().includes('ML'));
       renderGroup('kegList', kegs);
       renderGroup('canList', cans);
     }
@@ -97,65 +91,42 @@
     function renderGroup(id, list) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
-      list.forEach((item, i) => {
+      list.forEach(item => {
         const li = document.createElement('li');
-        // name+unit
-        const spanName = document.createElement('span');
-        spanName.className = 'name'; spanName.textContent = item.name;
-        const spanUnit = document.createElement('span');
-        spanUnit.className = 'unit'; spanUnit.textContent = item.unit;
-        li.append(spanName, spanUnit);
-        // initial count
-        const spanInit = document.createElement('span');
-        spanInit.className = 'initial';
-        spanInit.textContent = item.initialCount;
-        li.append(spanInit);
-        // tick
-        const tick = document.createElement('button');
-        tick.className = 'tick'; tick.innerText = '✔️';
-        tick.title = 'Carry forward';
-        tick.onclick = () => { item.quantity = item.initialCount; renderLists(); };
-        li.append(tick);
+        // name + unit
+        const spanN = Object.assign(document.createElement('span'),{className:'name',textContent:item.name});
+        const spanU = Object.assign(document.createElement('span'),{className:'unit',textContent:item.unit});
+        li.append(spanN, spanU);
+        // initial count + tick
+        const spanI = Object.assign(document.createElement('span'),{className:'initial',textContent:item.initialCount});
+        const btnT  = Object.assign(document.createElement('button'),{className:'tick',innerText:'✔️',title:'Carry forward'});
+        btnT.onclick = ()=>{ item.quantity = item.initialCount; renderLists(); };
+        li.append(spanI, btnT);
         // qty controls
-        const ctr = document.createElement('span');
-        ctr.className = 'qty-control';
-        const btnM = document.createElement('button');
-        btnM.innerText = '−';
-        btnM.onclick = () => {
-          let q = parseInt(item.quantity)||0;
-          item.quantity = Math.max(0, q-1);
-          renderLists();
-        };
-        const inp = document.createElement('input');
-        inp.type = 'number'; inp.value = item.quantity;
-        inp.oninput = e => { item.quantity = e.target.value; };
-        const btnP = document.createElement('button');
-        btnP.innerText = '+';
-        btnP.onclick = () => {
-          let q = parseInt(item.quantity)||0;
-          item.quantity = q+1;
-          renderLists();
-        };
-        ctr.append(btnM, inp, btnP);
+        const ctr = document.createElement('span'); ctr.className = 'qty-control';
+        const m = Object.assign(document.createElement('button'),{innerText:'−'});
+        m.onclick = ()=>{ let q=+item.quantity||0; item.quantity = Math.max(0,q-1); renderLists(); };
+        const inp = document.createElement('input'); inp.type='number'; inp.value=item.quantity;
+        inp.oninput = e=>item.quantity=e.target.value;
+        const p = Object.assign(document.createElement('button'),{innerText:'+'});
+        p.onclick = ()=>{ let q=+item.quantity||0; item.quantity=q+1; renderLists(); };
+        ctr.append(m, inp, p);
         li.append(ctr);
         // clear
-        const clr = document.createElement('button');
-        clr.className = 'clear'; clr.innerText = '🗑️';
-        clr.onclick = () => { item.quantity = ''; renderLists(); };
-        li.append(clr);
+        const btnC = Object.assign(document.createElement('button'),{className:'clear',innerText:'🗑️'});
+        btnC.onclick = ()=>{ item.quantity=''; renderLists(); };
+        li.append(btnC);
+
         ul.append(li);
       });
     }
 
     async function complete() {
-      const out = items.map(i => ({
-        name: `${i.name} // ${i.unit}`,
-        quantity: i.quantity
-      }));
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ stock: out })
+      const out = items.map(i=>({ name:`${i.name} // ${i.unit}`, quantity:i.quantity }));
+      const res = await fetch(API, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({stock:out})
       });
       const { success } = await res.json();
       alert(success ? '✅ Saved!' : '❌ Error');
