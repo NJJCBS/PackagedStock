@@ -45,17 +45,13 @@
       return `${dd}/${mm}/${yy}`;
     }
 
-    // load + prepare data
+    // fetch and store API data
     async function loadStock() {
       try {
-        document.getElementById('date').textContent = formatToday();
+        document.getElementById('date').textContent = ' ' + formatToday();
         const res = await fetch(API_URL);
-        const { stock } = await res.json();  // { tab, stock: [{rawName,initialCount,quantity}] }
-        rawStock = stock.map(i => ({
-          rawName:      i.rawName,
-          initialCount: i.initialCount,
-          quantity:     i.quantity
-        }));
+        const { stock } = await res.json();  // { tab, stock:[{rawName,initialCount,quantity}] }
+        rawStock = stock;
         document.getElementById('loading').style.display = 'none';
         document.getElementById('app').style.display = 'block';
         renderLists();
@@ -66,34 +62,41 @@
       }
     }
 
-    // clean & split name/unit
+    // clean item: strip prefix, split name vs info, extract unit correctly
     function cleanItem(item) {
-      let name = item.rawName.trim();
-      // skip month prefixes
-      if (/^(January|February|March|April|May|June|July|August|September|October|November|December)\b/.test(name)) return null;
-      // remove leading "NN. "
-      name = name.replace(/^\d{2}\.\s*/, '');
-      // drop "// ABV …"
-      name = name.split('//')[0].trim();
-      // pull off unit (last word)
-      const parts = name.split(' ');
-      const unit  = parts.pop();
-      return { cleanName: parts.join(' '), unit, ...item };
+      const raw = (item.rawName||'').trim();
+      // drop empty rows
+      if (!raw) return null;
+      // drop leading numeric prefix "02. "
+      const noNum = raw.replace(/^\d{2}\.\s*/, '');
+      // split at "//"
+      const parts = noNum.split('//');
+      const namePart = parts[0].trim();
+      const infoPart = (parts[1]||'').trim();
+      // from infoPart, remove ABV up to "%" then what's left is unit
+      const unit = infoPart.replace(/.*?%\s*/, '').trim();
+      return {
+        cleanName: namePart,
+        unit,
+        initialCount: item.initialCount,
+        quantity: item.quantity
+      };
     }
 
-    // render KEGS and CANS
+    // group into KEGS and CANS & render
     function renderLists() {
       const kegs = [], cans = [];
-      for (let i of rawStock) {
-        const c = cleanItem(i);
-        if (!c) continue;
+      rawStock.forEach(item => {
+        const c = cleanItem(item);
+        if (!c) return;
         if (c.unit.toUpperCase().includes('KEG')) kegs.push(c);
         else if (c.unit.toUpperCase().includes('ML')) cans.push(c);
-      }
+      });
       renderGroup('kegList', kegs);
       renderGroup('canList', cans);
     }
 
+    // render a single group
     function renderGroup(id, items) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
@@ -146,7 +149,7 @@
       });
     }
 
-    // complete → POST clean data back
+    // send clean data back to the API
     async function complete() {
       const out = [];
       ['kegList','canList'].forEach(id => {
@@ -154,7 +157,7 @@
           const name = li.querySelector('.name').textContent;
           const unit = li.querySelector('.unit').textContent;
           const qty  = li.querySelector('input').value;
-          out.push({ name: `${name} ${unit}`, quantity: qty });
+          out.push({ name: `${name} // ${unit}`, quantity: qty });
         });
       });
       try {
