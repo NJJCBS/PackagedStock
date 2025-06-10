@@ -1,3 +1,4 @@
+<!-- index.html (front end) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,14 +9,12 @@
     body { font-family: Arial, sans-serif; padding:20px; max-width:600px; margin:auto }
     h1 { margin-bottom:0.5rem; }
     #date { font-weight:normal; font-size:1rem; margin-left:8px; }
+    #login { text-align:center; margin-top:50px; }
+    #login input { padding:8px; font-size:1rem; width:60%; }
+    #login button { padding:8px 16px; font-size:1rem; margin-left:8px; }
     h2 { margin-top:1.5rem; font-size:1.1rem; }
     ul { list-style:none; padding:0; }
-    li { display:flex; align-items:center; margin:6px 0; }
-    .qty-control input::-webkit-outer-spin-button,
-    .qty-control input::-webkit-inner-spin-button {
-      -webkit-appearance: none; margin: 0;
-    }
-    .qty-control input { -moz-appearance: textfield; }
+    li { display:flex; align-items:center; margin:6px 0; padding:4px; }
     .name { flex:1; font-size:1rem; }
     .unit { font-size:0.7rem; color:#555; margin-left:6px; }
     .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right; }
@@ -23,156 +22,228 @@
       background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem;
     }
     .qty-control { display:flex; align-items:center; margin-left:8px; }
-    .qty-control input {
-      width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px;
-    }
+    .qty-control input { width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px; }
     #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer; }
-    #loading { font-style:italic; }
-    /* hide login until CSS loads */
-    #app, #date, #completeBtn { display: none; }
+    #loading { font-style:italic; text-align:center; }
   </style>
 </head>
 <body>
 
-  <!-- LOGIN SCREEN -->
   <div id="login">
-    <h1>Welcome to Stocktake</h1>
-    <label>
-      Enter your name:
-      <input id="nameInput" type="text" placeholder="e.g. NICK" />
-    </label>
+    <h1>Welcome to Brewery Stocktake</h1>
+    <input id="userName" placeholder="Enter your name…" />
     <button id="startBtn">Continue</button>
   </div>
 
-  <!-- MAIN APP -->
-  <h1>📋 Stocktake<span id="date"></span></h1>
-  <div id="loading">Loading…</div>
-  <div id="app">
-    <h2>KEGS</h2><ul id="kegList"></ul>
-    <h2>CANS</h2><ul id="canList"></ul>
-    <button id="completeBtn">Complete</button>
+  <div id="app" style="display:none;">
+    <h1>📋 Stocktake<span id="date"></span></h1>
+    <div id="loading">Loading…</div>
+
+    <div id="lists" style="display:none;">
+      <h2>KEGS</h2>
+      <ul id="kegList"></ul>
+
+      <h2>CANS / CASES</h2>
+      <ul id="canList"></ul>
+
+      <button id="completeBtn">Complete</button>
+    </div>
   </div>
 
   <script>
     const API = '/api/inventory';
     let items = [];
-    let userName = '';
+    let USER_NAME = '';
 
-    // format DD/MM/YY
+    const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+    // Format DD/MM/YY
     function formatToday() {
       const d = new Date();
-      return `${String(d.getDate()).padStart(2,'0')}/${
-              String(d.getMonth()+1).padStart(2,'0')}/${
-              String(d.getFullYear()).slice(-2)}`;
+      const dd = String(d.getDate()).padStart(2,'0');
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const yy = String(d.getFullYear()).slice(-2);
+      return `${dd}/${mm}/${yy}`;
     }
 
-    // after login, load stock
-    document.getElementById('startBtn').onclick = () => {
-      const nameIn = document.getElementById('nameInput').value.trim();
-      if (!nameIn) return alert('Please enter your name');
-      userName = nameIn.toUpperCase();
-      document.getElementById('login').style.display = 'none';
-      document.getElementById('date').style.display = 'inline';
-      document.getElementById('completeBtn').style.display = 'inline';
-      loadStock();
-    };
-
+    // Load data from Apps Script
     async function loadStock() {
-      document.getElementById('date').textContent = ' ' + formatToday() + ' - ' + userName;
+      document.getElementById('date').textContent =
+        ' ' + formatToday() + ' - ' + USER_NAME;
       const res = await fetch(API);
       const { stock } = await res.json();
-      items = stock.map(item => ({
-        id: item.id,
-        rawName: item.rawName,
-        initialCount: item.initialCount,
-        quantity: item.quantity,
-        trashClicks: 0
-      }));
+      // Build items[], filter out prior months
+      const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
+      items = stock.reduce((arr, item) => {
+        let raw = (item.rawName||'').trim();
+        if (!raw) return arr;
+        raw = raw.replace(/^\d{2}\.\s*/, '');
+        const [namePart, info=''] = raw.split('//').map(s=>s.trim());
+        const prefix = namePart.slice(0,3).toUpperCase();
+        if (MONTHS.includes(prefix) && prefix !== curMon) return arr;
+        const unit = info.replace(/.*?%\s*/, '');
+        arr.push({
+          id: item.id,
+          rawName: item.rawName,
+          name: namePart,
+          unit,
+          initialCount: item.initialCount,
+          quantity: item.quantity,
+          trashCount: 0
+        });
+        return arr;
+      }, []);
+
       document.getElementById('loading').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
+      document.getElementById('lists').style.display = 'block';
       renderLists();
       document.getElementById('completeBtn').onclick = complete;
     }
 
+    // Render both lists
     function renderLists() {
-      const kegs = items.filter(i => i.unit && i.unit.toUpperCase().includes('KEG'));
-      const cans = items.filter(i => i.unit && !i.unit.toUpperCase().includes('KEG'));
-      renderGroup('kegList', kegs);
-      renderGroup('canList', cans);
+      const kegsAll = items.filter(i=>/KEG/i.test(i.unit));
+      const cansAll = items.filter(i=>/ML/i.test(i.unit));
+
+      // Keg groups
+      const group20 = kegsAll.filter(i => /20|EXP|EXPORT/i.test(i.unit));
+      const group30 = kegsAll.filter(i => /30/.test(i.unit));
+      const group50 = kegsAll.filter(i => /50/.test(i.unit));
+      const others = kegsAll.filter(i =>
+        !/20|EXP|EXPORT|30|50/i.test(i.unit)
+      );
+
+      [group20, group30, group50, others].forEach(arr =>
+        arr.sort((a,b)=>a.name.localeCompare(b.name))
+      );
+
+      const kegs = [...group20, ...group30, ...group50, ...others];
+      renderGroup('kegList', kegs, true);
+
+      // Cans sorted + special last
+      const special = cansAll.filter(i =>
+        i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')
+      );
+      const normal = cansAll.filter(i =>
+        !i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')
+      ).sort((a,b)=>a.name.localeCompare(b.name));
+      const cans = [...normal, ...special];
+      renderGroup('canList', cans, false);
     }
 
-    function renderGroup(id, list) {
+    // Render one group (kegs or cans)
+    function renderGroup(id, list, isKeg) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
+
       list.forEach(item => {
         const li = document.createElement('li');
+
+        // color coding for kegs
+        if (isKeg) {
+          if (/(20|EXP|EXPORT)/i.test(item.unit)) {
+            li.style.backgroundColor = 'rgba(128,0,0,0.2)';
+          } else if (/30/.test(item.unit)) {
+            li.style.backgroundColor = 'rgba(255,255,0,0.2)';
+          } else if (/50/.test(item.unit)) {
+            li.style.backgroundColor = 'rgba(128,128,128,0.2)';
+          }
+        }
+
+        // name + unit
         const spanN = Object.assign(document.createElement('span'), {
-          className: 'name', textContent: item.rawName.split('//')[0].trim()
+          className: 'name',
+          textContent: item.name
         });
+        // bold special cans
+        if (!isKeg && item.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')) {
+          spanN.style.fontWeight = 'bold';
+        }
         const spanU = Object.assign(document.createElement('span'), {
-          className: 'unit', textContent: item.rawName.split('//')[1]?.trim() || ''
+          className: 'unit',
+          textContent: item.unit
         });
+        li.append(spanN, spanU);
+
+        // initial count + tick
         const spanI = Object.assign(document.createElement('span'), {
-          className: 'initial', textContent: item.initialCount
+          className: 'initial',
+          textContent: item.initialCount
         });
-        // tick button
         const btnT = Object.assign(document.createElement('button'), {
-          className:'tick', innerText:'✔️', title:'Carry forward'
+          className: 'tick',
+          innerText: '✔️',
+          title: 'Carry forward'
         });
-        btnT.onclick = () => { item.quantity = item.initialCount; renderLists(); };
+        btnT.onclick = () => {
+          item.quantity = item.initialCount;
+          renderLists();
+        };
+        li.append(spanI, btnT);
 
         // qty controls
         const ctr = document.createElement('span'); ctr.className = 'qty-control';
         const m = Object.assign(document.createElement('button'),{innerText:'−'});
-        m.onclick = () => { 
-          let q = +item.quantity || 0; 
-          item.quantity = Math.max(0, q-1); 
-          renderLists();
-        };
-        const inp = document.createElement('input');
-        inp.type = 'number'; inp.value = item.quantity;
-        inp.oninput = e => item.quantity = e.target.value;
+        m.onclick = () => { let q = +item.quantity||0; item.quantity = Math.max(0, q-1); renderLists(); };
+        const inp = Object.assign(document.createElement('input'), {
+          type: 'number',
+          value: item.quantity
+        });
+        inp.oninput = e => { item.quantity = e.target.value; renderLists(); };
         const p = Object.assign(document.createElement('button'),{innerText:'+'});
-        p.onclick = () => { 
-          let q = +item.quantity || 0; 
-          item.quantity = q+1; 
-          renderLists();
-        };
+        p.onclick = () => { let q = +item.quantity||0; item.quantity = q+1; renderLists(); };
         ctr.append(m, inp, p);
+        li.append(ctr);
 
-        // trash button
-        const btnC = Object.assign(document.createElement('button'),{
-          className:'clear', innerText:'🗑️'
+        // clear / trash — 3 presses → zero
+        const btnC = Object.assign(document.createElement('button'), {
+          className: 'clear', innerText: '🗑️'
         });
         btnC.onclick = () => {
-          item.trashClicks++;
-          if (item.trashClicks >= 3) {
-            item.quantity = '0';
-            item.trashClicks = 0;
+          item.trashCount = (item.trashCount || 0) + 1;
+          if (item.trashCount >= 3) {
+            item.quantity = 0;
+            item.trashCount = 0;
+          } else {
+            item.quantity = '';
           }
           renderLists();
         };
+        li.append(btnC);
 
-        li.append(spanN, spanU, spanI, btnT, ctr, btnC);
         ul.append(li);
       });
     }
 
+    // Submit and archive
     async function complete() {
-      // send only those you’ve touched (including zeros for deletion)
       const out = items
-        .filter(i => i.quantity !== '' )
+        .filter(i => +i.quantity !== 0)         // omit zeros
         .map(i => ({ id: i.id, quantity: i.quantity }));
       const res = await fetch(API, {
         method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ name: userName, stock: out })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: out, user: USER_NAME })
       });
       const { success } = await res.json();
       alert(success ? '✅ Saved!' : '❌ Error');
-      // reload
+      // reload fresh
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('lists').style.display = 'none';
       loadStock();
     }
+
+    // Kickoff: wait for user to enter name
+    window.onload = () => {
+      document.getElementById('startBtn').onclick = () => {
+        const inpt = document.getElementById('userName').value.trim();
+        if (!inpt) return alert('Please enter your name.');
+        USER_NAME = inpt;
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        loadStock();
+      };
+    };
   </script>
 </body>
 </html>
