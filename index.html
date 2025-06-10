@@ -5,125 +5,56 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Stocktake App</title>
   <style>
-    /*— Overall font and layout —*/
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      max-width: 600px;
-      margin: auto;
-    }
-    h1 {
-      margin-bottom: 1rem;
-    }
-    h2 {
-      margin-top: 2rem;
-      font-size: 1.2rem;
-    }
-    h2 b {
-      font-size: 1.2rem;
-    }
-    /*— Loading indicator —*/
-    #loading {
-      font-style: italic;
-    }
-    /*— Stock list styling —*/
-    ul {
-      list-style: none;
-      padding: 0;
-    }
-    li {
-      display: flex;
-      align-items: center;
-      margin: 8px 0;
-    }
-    /*— Initial count (column C) —*/
-    .initial {
-      opacity: 0.3;
-      width: 30px;
-      text-align: right;
-      margin-right: 8px;
-    }
-    /*— Tick button —*/
-    .tick {
-      background: none;
-      border: none;
-      cursor: pointer;
-      margin-right: 8px;
-    }
-    /*— Name & unit —*/
-    .name {
-      flex: 1;
-      font-size: 1rem;
-    }
-    .unit {
-      font-size: 0.7rem;
-      color: #555;
-      margin-left: 8px;
-    }
-    /*— Quantity input & controls —*/
-    .qty-control {
-      display: flex;
-      align-items: center;
-      margin-left: 8px;
-    }
-    .qty-control button {
-      background: none;
-      border: none;
-      font-size: 1rem;
-      cursor: pointer;
-      padding: 4px;
-    }
-    .qty-control input {
-      width: 50px;
-      text-align: center;
-      margin: 0 4px;
-      font-family: Arial, sans-serif;
-    }
-    /*— Clear (bin) button —*/
-    .clear {
-      background: none;
-      border: none;
-      cursor: pointer;
-      margin-left: 8px;
-    }
-    /*— Complete button —*/
-    #completeBtn {
-      margin-top: 24px;
-      padding: 10px 20px;
-      font-size: 1rem;
-      cursor: pointer;
-    }
+    body { font-family: Arial, sans-serif; padding:20px; max-width:600px; margin:auto }
+    h1 { margin-bottom:0.5rem; }
+    #date { font-weight:normal; font-size:1rem; margin-left:8px; }
+    h2 { margin-top:1.5rem; font-size:1.1rem; }
+    ul { list-style:none; padding:0; }
+    li { display:flex; align-items:center; margin:6px 0; }
+    .initial { opacity:0.3; width:30px; text-align:right; margin-right:8px; }
+    .tick, .clear, .qty-control button { background:none; border:none; cursor:pointer; }
+    .name { flex:1; font-size:1rem; }
+    .unit { font-size:0.7rem; color:#555; margin-left:6px; }
+    .qty-control { display:flex; align-items:center; margin-left:8px; }
+    .qty-control input { width:48px; text-align:center; font-family:Arial,sans-serif; }
+    #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer; }
+    #loading { font-style:italic; }
   </style>
 </head>
 <body>
-  <h1>📋 Stocktake</h1>
+  <h1>📋 Stocktake<span id="date"></span></h1>
   <div id="loading">Loading…</div>
   <div id="app" style="display:none;">
-    <!-- KEGS group -->
-    <h2><b>KEGS</b></h2>
+    <h2>KEGS</h2>
     <ul id="kegList"></ul>
-    <!-- CANS group -->
-    <h2><b>CANS</b></h2>
+    <h2>CANS</h2>
     <ul id="canList"></ul>
     <button id="completeBtn">Complete</button>
   </div>
 
   <script>
     const API_URL = 'https://script.google.com/macros/s/AKfycbyJT539HNbZcMqXVm_lXB1lwD1VyFd-mVG-q_nCZaKOKc4zxn7Y38jg_u1hpu3g7q7n/exec';
-
     let rawStock = [];
 
-    // month names to filter out
-    const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    // format today’s date DD/MM/YY
+    function formatToday() {
+      const d = new Date();
+      const dd = String(d.getDate()).padStart(2,'0');
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const yy = String(d.getFullYear()).slice(-2);
+      return `${dd}/${mm}/${yy}`;
+    }
 
+    // load + prepare data
     async function loadStock() {
       try {
+        document.getElementById('date').textContent = formatToday();
         const res = await fetch(API_URL);
-        const { stock } = await res.json();  // stock: [{ rawName, initialCount, quantity }]
-        rawStock = stock.map(item => ({
-          rawName:       item.rawName || item.name,    // if using old API, fallback to name
-          initialCount:  item.initialCount ?? 0,
-          quantity:      item.quantity ?? "",
+        const { stock } = await res.json();  // { tab, stock: [{rawName,initialCount,quantity}] }
+        rawStock = stock.map(i => ({
+          rawName:      i.rawName,
+          initialCount: i.initialCount,
+          quantity:     i.quantity
         }));
         document.getElementById('loading').style.display = 'none';
         document.getElementById('app').style.display = 'block';
@@ -135,151 +66,105 @@
       }
     }
 
+    // clean & split name/unit
     function cleanItem(item) {
       let name = item.rawName.trim();
-
-      // 1) filter out month-prefixed entries
-      for (let m of MONTHS) {
-        if (name.startsWith(m + ' ')) return null;
-      }
-      // 2) remove leading "NN." prefix
+      // skip month prefixes
+      if (/^(January|February|March|April|May|June|July|August|September|October|November|December)\b/.test(name)) return null;
+      // remove leading "NN. "
       name = name.replace(/^\d{2}\.\s*/, '');
-
-      // 3) split off ABV and unit
-      //    format: "Beer Name // XX.X% 20L KEG" or similar
-      const [before, after] = name.split('//');
-      name = before ? before.trim() : name;
-
-      // 4) extract unit (last token)
-      const tokens = name.split(' ');
-      const unit = tokens[tokens.length - 1];
-      const cleanName = tokens.slice(0, -1).join(' ');
-
-      return {
-        cleanName,
-        unit,
-        initialCount: item.initialCount,
-        quantity: item.quantity
-      };
+      // drop "// ABV …"
+      name = name.split('//')[0].trim();
+      // pull off unit (last word)
+      const parts = name.split(' ');
+      const unit  = parts.pop();
+      return { cleanName: parts.join(' '), unit, ...item };
     }
 
+    // render KEGS and CANS
     function renderLists() {
-      const kegs = [];
-      const cans = [];
-
-      for (let item of rawStock) {
-        const c = cleanItem(item);
-        if (!c) continue;  // skip month entries
-
+      const kegs = [], cans = [];
+      for (let i of rawStock) {
+        const c = cleanItem(i);
+        if (!c) continue;
         if (c.unit.toUpperCase().includes('KEG')) kegs.push(c);
         else if (c.unit.toUpperCase().includes('ML')) cans.push(c);
       }
-
       renderGroup('kegList', kegs);
       renderGroup('canList', cans);
     }
 
-    function renderGroup(listId, items) {
-      const ul = document.getElementById(listId);
+    function renderGroup(id, items) {
+      const ul = document.getElementById(id);
       ul.innerHTML = '';
-      items.forEach((item, i) => {
+      items.forEach(item => {
         const li = document.createElement('li');
-
         // initial count
         const spanInit = document.createElement('span');
         spanInit.className = 'initial';
         spanInit.textContent = item.initialCount;
         li.append(spanInit);
-
-        // tick button
+        // tick
         const tick = document.createElement('button');
         tick.className = 'tick';
-        tick.textContent = '✔️';
-        tick.title = 'Carry forward';
-        tick.onclick = () => {
-          item.quantity = item.initialCount;
-          renderLists();
-        };
+        tick.innerText = '✔️';
+        tick.onclick = () => { item.quantity = item.initialCount; renderLists(); };
         li.append(tick);
-
         // name
         const spanName = document.createElement('span');
         spanName.className = 'name';
         spanName.textContent = item.cleanName;
         li.append(spanName);
-
         // unit
         const spanUnit = document.createElement('span');
         spanUnit.className = 'unit';
         spanUnit.textContent = item.unit;
         li.append(spanUnit);
-
-        // qty controls: -, input, +
+        // qty controls
         const ctr = document.createElement('span');
         ctr.className = 'qty-control';
-
-        const btnMinus = document.createElement('button');
-        btnMinus.textContent = '−';
-        btnMinus.onclick = () => {
-          let q = parseInt(item.quantity) || 0;
-          item.quantity = Math.max(0, q - 1);
-          renderLists();
-        };
-        ctr.append(btnMinus);
-
+        const btnM = document.createElement('button');
+        btnM.innerText = '−';
+        btnM.onclick = () => { item.quantity = Math.max(0, (parseInt(item.quantity)||0)-1); renderLists(); };
         const inp = document.createElement('input');
         inp.type = 'number';
         inp.value = item.quantity;
-        inp.oninput = e => {
-          item.quantity = e.target.value;
-        };
-        ctr.append(inp);
-
-        const btnPlus = document.createElement('button');
-        btnPlus.textContent = '+';
-        btnPlus.onclick = () => {
-          let q = parseInt(item.quantity) || 0;
-          item.quantity = q + 1;
-          renderLists();
-        };
-        ctr.append(btnPlus);
-
+        inp.oninput = e => { item.quantity = e.target.value; };
+        const btnP = document.createElement('button');
+        btnP.innerText = '+';
+        btnP.onclick = () => { item.quantity = (parseInt(item.quantity)||0)+1; renderLists(); };
+        ctr.append(btnM, inp, btnP);
         li.append(ctr);
-
-        // clear/bin button
+        // clear
         const clr = document.createElement('button');
         clr.className = 'clear';
-        clr.textContent = '🗑️';
-        clr.onclick = () => {
-          item.quantity = '';
-          renderLists();
-        };
+        clr.innerText = '🗑️';
+        clr.onclick = () => { item.quantity = ''; renderLists(); };
         li.append(clr);
 
         ul.append(li);
       });
     }
 
+    // complete → POST clean data back
     async function complete() {
+      const out = [];
+      ['kegList','canList'].forEach(id => {
+        document.getElementById(id).childNodes.forEach(li => {
+          const name = li.querySelector('.name').textContent;
+          const unit = li.querySelector('.unit').textContent;
+          const qty  = li.querySelector('input').value;
+          out.push({ name: `${name} ${unit}`, quantity: qty });
+        });
+      });
       try {
-        // send only cleanName, unit, quantity array back
-        const out = [];
-        [...document.getElementById('kegList').children,
-           ...document.getElementById('canList').children]
-          .forEach(li => {
-            const name = li.querySelector('.name').textContent;
-            const unit = li.querySelector('.unit').textContent;
-            const qty  = li.querySelector('input').value;
-            out.push({ name: name + ' ' + unit, quantity: qty });
-          });
-
         const res = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ stock: out })
         });
-        const result = await res.json();
-        alert(result.success ? '✅ Saved!' : '❌ Error');
+        const { success } = await res.json();
+        alert(success ? '✅ Saved!' : '❌ Error');
         loadStock();
       } catch (err) {
         console.error(err);
