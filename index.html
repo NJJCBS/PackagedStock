@@ -192,15 +192,21 @@
         const btnC = document.createElement('button');
         btnC.className = 'clear';
         btnC.innerText = '🗑️';
-        btnC.onclick   = e => {
-          e.stopPropagation();
-          item.trashClicks++;
-          if (item.trashClicks >= 3) {
-            item.quantity    = '0';
-            item.trashClicks = 0;
-          }
-          renderLists();
-        };
+        btnC.onclick = e => {
+  e.stopPropagation();
+  // increment click count
+  item.trashClicks = (item.trashClicks || 0) + 1;
+
+  if (item.trashClicks === 1) {
+    // first click: empty the field
+    item.quantity = '';
+  } else if (item.trashClicks >= 3) {
+    // third click: enter "0" and reset counter
+    item.quantity    = '0';
+    item.trashClicks = 0;
+  }
+  renderLists();
+};
 
         li.append(spanN, spanU, spanI, btnT, ctr, btnC);
         ul.append(li);
