@@ -5,29 +5,24 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Stocktake App</title>
   <style>
-    body { font-family: Arial, sans-serif; padding:20px; max-width:600px; margin:auto }
-    h1 { margin-bottom:0.5rem; }
-    #date { font-weight:normal; font-size:1rem; margin-left:8px; }
-    h2 { margin-top:1.5rem; font-size:1.1rem; }
-    ul { list-style:none; padding:0; }
-    li { display:flex; align-items:center; margin:6px 0; }
-    .qty-control input::-webkit-outer-spin-button,
-    .qty-control input::-webkit-inner-spin-button {
-      -webkit-appearance: none; margin: 0;
-    }
-    .qty-control input { -moz-appearance: textfield; }
+    body { font-family:Arial,sans-serif; padding:20px; max-width:600px; margin:auto }
+    h1 { margin-bottom:0.5rem }
+    #date { font-size:1rem; margin-left:8px }
+    h2 { margin-top:1.5rem; font-size:1.1rem }
+    ul { list-style:none; padding:0 }
+    li { display:flex; align-items:center; margin:6px 0 }
     .name { flex:1; font-size:1rem; }
     .unit { font-size:0.7rem; color:#555; margin-left:6px; }
     .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right; }
-    .tick, .clear, .qty-control button {
-      background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem;
-    }
-    .qty-control { display:flex; align-items:center; margin-left:8px; }
+    .tick, .clear, .qty-control button { background:none; border:none; cursor:pointer; padding:0 4px }
+    .qty-control { display:flex; align-items:center; margin-left:8px }
     .qty-control input {
-      width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px;
+      width:48px; text-align:center; margin:0 4px; -moz-appearance:textfield;
     }
-    #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer; }
-    #loading { font-style:italic; }
+    .qty-control input::-webkit-outer-spin-button,
+    .qty-control input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0 }
+    #completeBtn { margin-top:24px; padding:10px 20px; cursor:pointer }
+    #loading { font-style:italic }
   </style>
 </head>
 <body>
@@ -43,11 +38,10 @@
     const API = '/api/inventory';
     let items = [];
 
-    // current month code, e.g. "JUN"
     const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
     const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
-    function formatToday() {
+    function today() {
       const d = new Date();
       return `${String(d.getDate()).padStart(2,'0')}/${
               String(d.getMonth()+1).padStart(2,'0')}/${
@@ -55,78 +49,69 @@
     }
 
     async function loadStock() {
-      document.getElementById('date').textContent = ' ' + formatToday();
+      document.getElementById('date').textContent = ' ' + today();
       const res = await fetch(API);
-      const { stock } = await res.json();
-      // build persistent items[], filter months ≠ current
-      items = stock.reduce((arr, item) => {
-        let raw = (item.rawName||'').trim();
+      const { stock } = await res.json(); // [{id,rawName,initialCount,quantity}]
+      // build items[], filtering by month prefix != curMon
+      items = stock.reduce((arr, it) => {
+        let raw = (it.rawName||'').replace(/^\d{2}\.\s*/, '').trim();
         if (!raw) return arr;
-        raw = raw.replace(/^\d{2}\.\s*/, '');
         const [namePart, info=''] = raw.split('//').map(s=>s.trim());
         const prefix = namePart.slice(0,3).toUpperCase();
         if (MONTHS.includes(prefix) && prefix !== curMon) return arr;
         const unit = info.replace(/.*?%\s*/, '');
-        arr.push({
-          name: namePart,
-          unit,
-          initialCount: item.initialCount,
-          quantity: item.quantity
-        });
+        arr.push({ id: it.id, name: namePart, unit, initialCount: it.initialCount, quantity: it.quantity });
         return arr;
       }, []);
       document.getElementById('loading').style.display = 'none';
       document.getElementById('app').style.display = 'block';
-      renderLists();
+      render();
       document.getElementById('completeBtn').onclick = complete;
     }
 
-    function renderLists() {
-      const kegs = items.filter(i=>i.unit.toUpperCase().includes('KEG'));
-      const cans = items.filter(i=>i.unit.toUpperCase().includes('ML'));
-      renderGroup('kegList', kegs);
-      renderGroup('canList', cans);
-    }
+    function render() {
+      ['kegList','canList'].forEach(id=>{
+        const ul = document.getElementById(id);
+        ul.innerHTML = '';
+        items
+          .filter(i=> id==='kegList' ? i.unit.includes('KEG') : i.unit.includes('ML'))
+          .forEach(item=>{
+            const li = document.createElement('li');
+            // name + unit
+            li.append(
+              Object.assign(document.createElement('span'),{className:'name',textContent:item.name}),
+              Object.assign(document.createElement('span'),{className:'unit',textContent:item.unit})
+            );
+            // initial + tick
+            const spanI = Object.assign(document.createElement('span'),{className:'initial',textContent:item.initialCount});
+            const btnT  = Object.assign(document.createElement('button'),{className:'tick',innerText:'✔️'});
+            btnT.onclick = ()=>{ item.quantity = item.initialCount; render(); };
+            li.append(spanI, btnT);
+            // qty controls
+            const ctr = document.createElement('span'); ctr.className='qty-control';
+            const m   = Object.assign(document.createElement('button'),{innerText:'−'});
+            m.onclick = ()=>{ let q=+item.quantity||0; item.quantity = Math.max(0,q-1); render(); };
+            const inp = document.createElement('input'); inp.type='number'; inp.value=item.quantity;
+            inp.oninput = e=>item.quantity=e.target.value;
+            const p   = Object.assign(document.createElement('button'),{innerText:'+'});
+            p.onclick = ()=>{ let q=+item.quantity||0; item.quantity=q+1; render(); };
+            ctr.append(m, inp, p);
+            li.append(ctr);
+            // clear
+            const clr = Object.assign(document.createElement('button'),{className:'clear',innerText:'🗑️'});
+            clr.onclick = ()=>{ item.quantity=''; render(); };
+            li.append(clr);
 
-    function renderGroup(id, list) {
-      const ul = document.getElementById(id);
-      ul.innerHTML = '';
-      list.forEach(item => {
-        const li = document.createElement('li');
-        // name + unit
-        const spanN = Object.assign(document.createElement('span'),{className:'name',textContent:item.name});
-        const spanU = Object.assign(document.createElement('span'),{className:'unit',textContent:item.unit});
-        li.append(spanN, spanU);
-        // initial count + tick
-        const spanI = Object.assign(document.createElement('span'),{className:'initial',textContent:item.initialCount});
-        const btnT  = Object.assign(document.createElement('button'),{className:'tick',innerText:'✔️',title:'Carry forward'});
-        btnT.onclick = ()=>{ item.quantity = item.initialCount; renderLists(); };
-        li.append(spanI, btnT);
-        // qty controls
-        const ctr = document.createElement('span'); ctr.className = 'qty-control';
-        const m = Object.assign(document.createElement('button'),{innerText:'−'});
-        m.onclick = ()=>{ let q=+item.quantity||0; item.quantity = Math.max(0,q-1); renderLists(); };
-        const inp = document.createElement('input'); inp.type='number'; inp.value=item.quantity;
-        inp.oninput = e=>item.quantity=e.target.value;
-        const p = Object.assign(document.createElement('button'),{innerText:'+'});
-        p.onclick = ()=>{ let q=+item.quantity||0; item.quantity=q+1; renderLists(); };
-        ctr.append(m, inp, p);
-        li.append(ctr);
-        // clear
-        const btnC = Object.assign(document.createElement('button'),{className:'clear',innerText:'🗑️'});
-        btnC.onclick = ()=>{ item.quantity=''; renderLists(); };
-        li.append(btnC);
-
-        ul.append(li);
+            ul.append(li);
+          });
       });
     }
 
     async function complete() {
-      const out = items.map(i=>({ name:`${i.name} // ${i.unit}`, quantity:i.quantity }));
+      const out = items.map(i=>({ id:i.id, quantity:i.quantity }));
       const res = await fetch(API, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({stock:out})
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ stock:out })
       });
       const { success } = await res.json();
       alert(success ? '✅ Saved!' : '❌ Error');
