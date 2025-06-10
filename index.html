@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Stocktake App</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+    h1 { margin-bottom: 1rem; }
+    ul { list-style: none; padding: 0; }
+    li { display: flex; align-items: center; margin: 8px 0; }
+    input { width: 60px; margin-right: 8px; }
+    button { margin-left: 4px; }
+    #loading { font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>📋 Stocktake</h1>
+  <div id="loading">Loading…</div>
+  <div id="app" style="display:none;">
+    <ul id="list"></ul>
+    <button id="completeBtn" style="margin-top:16px;padding:8px 16px;">
+      Complete
+    </button>
+  </div>
+
+  <script>
+    // ← YOUR Apps Script Web App URL here:
+    const API_URL = 'https://script.google.com/macros/s/AKfycbyJT539HNbZcMqXVm_lXB1lwD1VyFd-mVG-q_nCZaKOKc4zxn7Y38jg_u1hpu3g7q7n/exec';
+
+    let stock = [];
+
+    async function loadStock() {
+      try {
+        const res = await fetch(API_URL);
+        const data = await res.json();          // { tab, stock }
+        stock = data.stock;
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        renderList();
+        document.getElementById('completeBtn').onclick = complete;
+      } catch (err) {
+        console.error(err);
+        document.getElementById('loading').textContent = 'Error loading data.';
+      }
+    }
+
+    function renderList() {
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+      stock.forEach((item, i) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.style.flex = 1;
+        name.textContent = item.name;
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.value = item.quantity;
+        inp.oninput = e => stock[i].quantity = e.target.value;
+        const clr = document.createElement('button');
+        clr.textContent = '🗑️';
+        clr.onclick = () => { stock[i].quantity = ''; renderList(); };
+
+        li.append(name, inp, clr);
+        list.append(li);
+      });
+    }
+
+    async function complete() {
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stock })
+        });
+        const result = await res.json();
+        alert(result.success ? '✅ Saved!' : '❌ Error');
+        loadStock();  // refresh
+      } catch (err) {
+        console.error(err);
+        alert('Error saving data.');
+      }
+    }
+
+    window.onload = loadStock;
+  </script>
+</body>
+</html>
