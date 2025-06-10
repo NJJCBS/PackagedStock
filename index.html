@@ -1,4 +1,4 @@
-<!-- index.html -->
+<!-- index.html (front end) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,43 +9,43 @@
     body { font-family: Arial, sans-serif; padding:20px; max-width:600px; margin:auto }
     h1 { margin-bottom:0.5rem; }
     #date { font-weight:normal; font-size:1rem; margin-left:8px; }
+    #login { text-align:center; margin-top:50px; }
+    #login input { padding:8px; font-size:1rem; width:60%; }
+    #login button { padding:8px 16px; font-size:1rem; margin-left:8px; }
     h2 { margin-top:1.5rem; font-size:1.1rem; }
     ul { list-style:none; padding:0; }
     li { display:flex; align-items:center; margin:6px 0; padding:4px; }
     .name { flex:1; font-size:1rem; }
     .unit { font-size:0.7rem; color:#555; margin-left:6px; }
     .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right; }
-    .tick, .clear, .qty-control button { background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem; }
+    .tick, .clear, .qty-control button {
+      background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem;
+    }
     .qty-control { display:flex; align-items:center; margin-left:8px; }
     .qty-control input { width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px; }
     #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer; }
-    #loading { font-style:italic; }
-    /* Highlight styles */
-    .highlight-maroon { background-color: rgba(128,0,0,0.1); }
-    .highlight-yellow { background-color: rgba(255,255,0,0.1); }
-    .highlight-grey   { background-color: rgba(128,128,128,0.1); }
-    /* Login screen */
-    #login { text-align:center; }
-    #login input { padding:8px; font-size:1rem; width:80%; margin-bottom:12px; }
-    #login button { padding:10px 20px; font-size:1rem; cursor:pointer; }
+    #loading { font-style:italic; text-align:center; }
   </style>
 </head>
 <body>
-  <!-- Login Screen -->
+
   <div id="login">
-    <h1>Welcome to Stocktake</h1>
-    <input id="username" type="text" placeholder="Enter your name" />
-    <br/>
-    <button id="loginBtn">Continue</button>
+    <h1>Welcome to Brewery Stocktake</h1>
+    <input id="userName" placeholder="Enter your name…" />
+    <button id="startBtn">Continue</button>
   </div>
 
-  <!-- Main App Container -->
-  <div id="appContainer" style="display:none;">
+  <div id="app" style="display:none;">
     <h1>📋 Stocktake<span id="date"></span></h1>
     <div id="loading">Loading…</div>
-    <div id="app" style="display:none;">
-      <h2>KEGS</h2><ul id="kegList"></ul>
-      <h2>CANS</h2><ul id="canList"></ul>
+
+    <div id="lists" style="display:none;">
+      <h2>KEGS</h2>
+      <ul id="kegList"></ul>
+
+      <h2>CANS / CASES</h2>
+      <ul id="canList"></ul>
+
       <button id="completeBtn">Complete</button>
     </div>
   </div>
@@ -53,126 +53,157 @@
   <script>
     const API = '/api/inventory';
     let items = [];
-    let userName = '';
+    let USER_NAME = '';
 
-    // Utilities
+    const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+    // Format DD/MM/YY
     function formatToday() {
       const d = new Date();
-      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+      const dd = String(d.getDate()).padStart(2,'0');
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const yy = String(d.getFullYear()).slice(-2);
+      return `${dd}/${mm}/${yy}`;
     }
 
-    // Load stock after login
+    // Load data from Apps Script
     async function loadStock() {
-      document.getElementById('date').textContent = ' ' + formatToday() + ' - ' + userName;
+      document.getElementById('date').textContent =
+        ' ' + formatToday() + ' - ' + USER_NAME;
       const res = await fetch(API);
       const { stock } = await res.json();
-
-      // Build items[], include clearCount and preserve rawName
+      // Build items[], filter out prior months
+      const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
       items = stock.reduce((arr, item) => {
         let raw = (item.rawName||'').trim();
         if (!raw) return arr;
         raw = raw.replace(/^\d{2}\.\s*/, '');
         const [namePart, info=''] = raw.split('//').map(s=>s.trim());
         const prefix = namePart.slice(0,3).toUpperCase();
-        const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
-        const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
         if (MONTHS.includes(prefix) && prefix !== curMon) return arr;
         const unit = info.replace(/.*?%\s*/, '');
-        arr.push({ rawName: raw, name: namePart, unit, initialCount: item.initialCount, quantity: item.quantity, clearCount: 0 });
+        arr.push({
+          id: item.id,
+          rawName: item.rawName,
+          name: namePart,
+          unit,
+          initialCount: item.initialCount,
+          quantity: item.quantity,
+          trashCount: 0
+        });
         return arr;
       }, []);
 
       document.getElementById('loading').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
+      document.getElementById('lists').style.display = 'block';
       renderLists();
       document.getElementById('completeBtn').onclick = complete;
     }
 
+    // Render both lists
     function renderLists() {
-      // KEGS section
-      let kegs = items.filter(i=>i.unit.toUpperCase().includes('KEG'));
+      const kegsAll = items.filter(i=>/KEG/i.test(i.unit));
+      const cansAll = items.filter(i=>/ML/i.test(i.unit));
 
-      // Sectioned sorting
-      const section20 = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit))
-                           .sort((a,b)=>a.name.localeCompare(b.name));
-      const section30 = kegs.filter(i=>!/20|EXP|EXPORT/i.test(i.unit) && /30/.test(i.unit))
-                           .sort((a,b)=>a.name.localeCompare(b.name));
-      const section50 = kegs.filter(i=>!/20|EXP|EXPORT/i.test(i.unit) && !/30/.test(i.unit) && /50/.test(i.unit))
-                           .sort((a,b)=>a.name.localeCompare(b.name));
-      const rest     = kegs.filter(i=>!/20|EXP|EXPORT|30|50/i.test(i.unit));
-      kegs = [...section20, ...section30, ...section50, ...rest];
+      // Keg groups
+      const group20 = kegsAll.filter(i => /20|EXP|EXPORT/i.test(i.unit));
+      const group30 = kegsAll.filter(i => /30/.test(i.unit));
+      const group50 = kegsAll.filter(i => /50/.test(i.unit));
+      const others = kegsAll.filter(i =>
+        !/20|EXP|EXPORT|30|50/i.test(i.unit)
+      );
 
-      // CANS section
-      let cans = items.filter(i=>i.unit.toUpperCase().includes('ML'));
-      // Special last and bold
-      const special = cans.filter(i=>i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML'));
-      const normalCans = cans.filter(i=>!i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML'));
-      cans = normalCans.sort((a,b)=>a.name.localeCompare(b.name)).concat(special);
+      [group20, group30, group50, others].forEach(arr =>
+        arr.sort((a,b)=>a.name.localeCompare(b.name))
+      );
 
-      renderGroup('kegList', kegs);
-      renderGroup('canList', cans);
+      const kegs = [...group20, ...group30, ...group50, ...others];
+      renderGroup('kegList', kegs, true);
+
+      // Cans sorted + special last
+      const special = cansAll.filter(i =>
+        i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')
+      );
+      const normal = cansAll.filter(i =>
+        !i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')
+      ).sort((a,b)=>a.name.localeCompare(b.name));
+      const cans = [...normal, ...special];
+      renderGroup('canList', cans, false);
     }
 
-    function renderGroup(id, list) {
+    // Render one group (kegs or cans)
+    function renderGroup(id, list, isKeg) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
 
       list.forEach(item => {
         const li = document.createElement('li');
 
-        // Highlight by unit
-        if (/20|EXP|EXPORT/i.test(item.unit)) {
-          li.classList.add('highlight-maroon');
-        } else if (/\b30\b/.test(item.unit)) {
-          li.classList.add('highlight-yellow');
-        } else if (/50/.test(item.unit)) {
-          li.classList.add('highlight-grey');
+        // color coding for kegs
+        if (isKeg) {
+          if (/(20|EXP|EXPORT)/i.test(item.unit)) {
+            li.style.backgroundColor = 'rgba(128,0,0,0.2)';
+          } else if (/30/.test(item.unit)) {
+            li.style.backgroundColor = 'rgba(255,255,0,0.2)';
+          } else if (/50/.test(item.unit)) {
+            li.style.backgroundColor = 'rgba(128,128,128,0.2)';
+          }
         }
 
-        // Name + unit
-        const spanN = document.createElement('span');
-        spanN.className = 'name';
-        spanN.textContent = item.name;
-        // Bold special cans
-        if (item.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')) {
+        // name + unit
+        const spanN = Object.assign(document.createElement('span'), {
+          className: 'name',
+          textContent: item.name
+        });
+        // bold special cans
+        if (!isKeg && item.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')) {
           spanN.style.fontWeight = 'bold';
         }
-        const spanU = document.createElement('span');
-        spanU.className = 'unit';
-        spanU.textContent = item.unit;
+        const spanU = Object.assign(document.createElement('span'), {
+          className: 'unit',
+          textContent: item.unit
+        });
         li.append(spanN, spanU);
 
-        // Initial + tick
-        const spanI = document.createElement('span');
-        spanI.className = 'initial';
-        spanI.textContent = item.initialCount;
-        const btnT = document.createElement('button');
-        btnT.className = 'tick';
-        btnT.innerText = '✔️';
-        btnT.title = 'Carry forward';
-        btnT.onclick = () => { item.quantity = item.initialCount; renderLists(); };
+        // initial count + tick
+        const spanI = Object.assign(document.createElement('span'), {
+          className: 'initial',
+          textContent: item.initialCount
+        });
+        const btnT = Object.assign(document.createElement('button'), {
+          className: 'tick',
+          innerText: '✔️',
+          title: 'Carry forward'
+        });
+        btnT.onclick = () => {
+          item.quantity = item.initialCount;
+          renderLists();
+        };
         li.append(spanI, btnT);
 
-        // Qty controls
-        const ctr = document.createElement('span');
-        ctr.className = 'qty-control';
-        const m = document.createElement('button'); m.innerText = '−';
-        m.onclick = () => { let q=+item.quantity||0; item.quantity=Math.max(0,q-1); renderLists(); };
-        const inp = document.createElement('input'); inp.type='number'; inp.value=item.quantity;
-        inp.oninput = e=>item.quantity=e.target.value;
-        const p = document.createElement('button'); p.innerText = '+';
-        p.onclick = () => { let q=+item.quantity||0; item.quantity=q+1; renderLists(); };
+        // qty controls
+        const ctr = document.createElement('span'); ctr.className = 'qty-control';
+        const m = Object.assign(document.createElement('button'),{innerText:'−'});
+        m.onclick = () => { let q = +item.quantity||0; item.quantity = Math.max(0, q-1); renderLists(); };
+        const inp = Object.assign(document.createElement('input'), {
+          type: 'number',
+          value: item.quantity
+        });
+        inp.oninput = e => { item.quantity = e.target.value; renderLists(); };
+        const p = Object.assign(document.createElement('button'),{innerText:'+'});
+        p.onclick = () => { let q = +item.quantity||0; item.quantity = q+1; renderLists(); };
         ctr.append(m, inp, p);
         li.append(ctr);
 
-        // Clear / delete (trash)
-        const btnC = document.createElement('button');
-        btnC.className = 'clear'; btnC.innerText = '🗑️';
+        // clear / trash — 3 presses → zero
+        const btnC = Object.assign(document.createElement('button'), {
+          className: 'clear', innerText: '🗑️'
+        });
         btnC.onclick = () => {
-          item.clearCount = (item.clearCount || 0) + 1;
-          if (item.clearCount >= 3) {
+          item.trashCount = (item.trashCount || 0) + 1;
+          if (item.trashCount >= 3) {
             item.quantity = 0;
-            item.clearCount = 0;
+            item.trashCount = 0;
           } else {
             item.quantity = '';
           }
@@ -184,34 +215,32 @@
       });
     }
 
+    // Submit and archive
     async function complete() {
-      // Exclude zeros (deleted)
       const out = items
-        .filter(i => !(i.quantity === 0 || i.quantity === '0'))
-        .map(i => ({ name: `${i.name} // ${i.unit}`, quantity: i.quantity }));
-
+        .filter(i => +i.quantity !== 0)         // omit zeros
+        .map(i => ({ id: i.id, quantity: i.quantity }));
       const res = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stock: out, name: userName })
+        body: JSON.stringify({ stock: out, user: USER_NAME })
       });
       const { success } = await res.json();
       alert(success ? '✅ Saved!' : '❌ Error');
+      // reload fresh
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('lists').style.display = 'none';
       loadStock();
     }
 
-    // Initialize login flow
+    // Kickoff: wait for user to enter name
     window.onload = () => {
-      document.getElementById('loginBtn').onclick = () => {
-        const input = document.getElementById('username');
-        const name = input.value.trim();
-        if (!name) {
-          alert('Please enter your name');
-          return;
-        }
-        userName = name;
+      document.getElementById('startBtn').onclick = () => {
+        const inpt = document.getElementById('userName').value.trim();
+        if (!inpt) return alert('Please enter your name.');
+        USER_NAME = inpt;
         document.getElementById('login').style.display = 'none';
-        document.getElementById('appContainer').style.display = 'block';
+        document.getElementById('app').style.display = 'block';
         loadStock();
       };
     };
