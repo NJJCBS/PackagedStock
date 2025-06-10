@@ -201,3 +201,93 @@
           renderLists();
         };
         li.append(tick);
+
+        // name
+        const spanName = document.createElement('span');
+        spanName.className = 'name';
+        spanName.textContent = item.cleanName;
+        li.append(spanName);
+
+        // unit
+        const spanUnit = document.createElement('span');
+        spanUnit.className = 'unit';
+        spanUnit.textContent = item.unit;
+        li.append(spanUnit);
+
+        // qty controls: -, input, +
+        const ctr = document.createElement('span');
+        ctr.className = 'qty-control';
+
+        const btnMinus = document.createElement('button');
+        btnMinus.textContent = '−';
+        btnMinus.onclick = () => {
+          let q = parseInt(item.quantity) || 0;
+          item.quantity = Math.max(0, q - 1);
+          renderLists();
+        };
+        ctr.append(btnMinus);
+
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.value = item.quantity;
+        inp.oninput = e => {
+          item.quantity = e.target.value;
+        };
+        ctr.append(inp);
+
+        const btnPlus = document.createElement('button');
+        btnPlus.textContent = '+';
+        btnPlus.onclick = () => {
+          let q = parseInt(item.quantity) || 0;
+          item.quantity = q + 1;
+          renderLists();
+        };
+        ctr.append(btnPlus);
+
+        li.append(ctr);
+
+        // clear/bin button
+        const clr = document.createElement('button');
+        clr.className = 'clear';
+        clr.textContent = '🗑️';
+        clr.onclick = () => {
+          item.quantity = '';
+          renderLists();
+        };
+        li.append(clr);
+
+        ul.append(li);
+      });
+    }
+
+    async function complete() {
+      try {
+        // send only cleanName, unit, quantity array back
+        const out = [];
+        [...document.getElementById('kegList').children,
+           ...document.getElementById('canList').children]
+          .forEach(li => {
+            const name = li.querySelector('.name').textContent;
+            const unit = li.querySelector('.unit').textContent;
+            const qty  = li.querySelector('input').value;
+            out.push({ name: name + ' ' + unit, quantity: qty });
+          });
+
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stock: out })
+        });
+        const result = await res.json();
+        alert(result.success ? '✅ Saved!' : '❌ Error');
+        loadStock();
+      } catch (err) {
+        console.error(err);
+        alert('Error saving data.');
+      }
+    }
+
+    window.onload = loadStock;
+  </script>
+</body>
+</html>
