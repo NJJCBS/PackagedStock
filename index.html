@@ -6,26 +6,22 @@
   <title>Stocktake App</title>
   <style>
     body { font-family: Arial, sans-serif; padding:20px; max-width:600px; margin:auto }
-    h1 { margin-bottom:0.5rem; }
-    #login { text-align:center; margin-top:50px; }
-    #login input { padding:8px; font-size:1rem; width:60%; }
-    #login button { padding:8px 16px; font-size:1rem; margin-left:8px; }
-    #app { display:none; }
-    #loading { font-style:italic; }
-    h2 { margin-top:1.5rem; font-size:1.1rem; }
-    ul { list-style:none; padding:0; }
-    li { display:flex; align-items:center; margin:6px 0; padding:4px; }
-    .name { flex:1; font-size:1rem; }
-    .unit { font-size:0.7rem; color:#555; margin-left:6px; }
-    .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right; }
-    .tick, .clear, .qty-control button {
-      background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem;
-    }
-    .qty-control { display:flex; align-items:center; margin-left:8px; }
-    .qty-control input {
-      width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px;
-    }
-    #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer; }
+    h1 { margin-bottom:0.5rem }
+    #login { text-align:center; margin-top:50px }
+    #login input { padding:8px; font-size:1rem; width:60% }
+    #login button{ padding:8px 16px; font-size:1rem; margin-left:8px }
+    #app { display:none }
+    #loading { font-style:italic }
+    h2 { margin-top:1.5rem; font-size:1.1rem }
+    ul { list-style:none; padding:0 }
+    li { display:flex; align-items:center; margin:6px 0; padding:4px }
+    .name { flex:1; font-size:1rem }
+    .unit { font-size:0.7rem; color:#555; margin-left:6px }
+    .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right }
+    .tick, .clear, .qty-control button { background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem }
+    .qty-control { display:flex; align-items:center; margin-left:8px }
+    .qty-control input { width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px }
+    #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer }
   </style>
 </head>
 <body>
@@ -41,7 +37,7 @@
   <div id="app">
     <h1>📋 Stocktake <span id="date"></span></h1>
     <div id="loading">Loading…</div>
-    <div id="lists" style="display:none;">
+    <div id="lists" style="display:none">
       <h2>KEGS</h2>
       <ul id="kegList"></ul>
       <h2>CANS / CASES</h2>
@@ -52,9 +48,9 @@
 
   <script>
     const API = '/api/inventory';
+    const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
     let items = [], userName = '';
 
-    // Format today as "DD/MM/YY"
     function formatToday() {
       const d = new Date();
       return `${String(d.getDate()).padStart(2,'0')}/${
@@ -62,7 +58,6 @@
               String(d.getFullYear()).slice(-2)}`;
     }
 
-    // After clicking Continue…
     document.getElementById('startBtn').onclick = () => {
       const name = document.getElementById('nameInput').value.trim();
       if (!name) return alert('Please enter your name');
@@ -72,109 +67,111 @@
       loadStock();
     };
 
-    // Load from Apps Script
     async function loadStock() {
       document.getElementById('date').textContent = formatToday() + ' - ' + userName;
-      const resp = await fetch(API);
-      const { stock } = await resp.json();
+      const res = await fetch(API);
+      const { stock } = await res.json();
 
-      // Parse rawName → name & unit
-      items = stock.map(item => {
-        const [n,u] = (item.rawName||'')
-          .replace(/^\d+\.\s*/, '')    // strip leading "NN. "
-          .split('//')
-          .map(s=>s.trim());
-        return {
+      const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
+
+      // parse & filter
+      items = stock.reduce((arr, item) => {
+        // strip leading "NN. " then split rawName
+        const raw = (item.rawName || '').replace(/^\d+\.\s*/, '');
+        const [namePart, infoPart=''] = raw.split('//').map(s=>s.trim());
+        // filter out other months
+        const prefix = namePart.slice(0,3).toUpperCase();
+        if (MONTHS.includes(prefix) && prefix !== curMon) return arr;
+        // remove ABV (e.g. "6.1% ") from unit
+        const unit = infoPart.replace(/^\d+(\.\d+)?%\s*/, '');
+        arr.push({
           id:          item.id,
-          name:        n || '',
-          unit:        u || '',
+          rawName:     item.rawName,
+          name:        namePart,
+          unit:        unit,
           initialCount:item.initialCount,
           quantity:    item.quantity,
           trashClicks: 0
-        };
-      });
+        });
+        return arr;
+      }, []);
 
       document.getElementById('loading').style.display = 'none';
-      document.getElementById('lists').style.display = 'block';
+      document.getElementById('lists').style.display  = 'block';
       renderLists();
     }
 
-    // Render both KEGS and CANS
     function renderLists() {
-      // Group & sort kegs
+      // Kegs grouping
       const kegs = items.filter(i=>/KEG/i.test(i.unit));
-      const g20  = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const g30  = kegs.filter(i=>/30/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const g50  = kegs.filter(i=>/50/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const gO   = kegs.filter(i=>!/(20|EXP|EXPORT|30|50)/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      renderGroup('kegList',[...g20,...g30,...g50,...gO], true);
+      const by20 = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
+      const by30 = kegs.filter(i=>/30/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
+      const by50 = kegs.filter(i=>/50/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
+      const other= kegs.filter(i=>!/(20|EXP|EXPORT|30|50)/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
+      renderGroup('kegList', [...by20,...by30,...by50,...other], true);
 
-      // Sort cans, special last & bold
+      // Cans sorted, special last
       const cansAll = items.filter(i=>!/KEG/i.test(i.unit));
-      const special = cansAll.filter(i=>i.rawName?.includes('SIDE PIECE GIN // 42% 6X700ML'));
+      const special = cansAll.filter(i=>i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML'));
       const normal  = cansAll.filter(i=>!special.includes(i)).sort((a,b)=>a.name.localeCompare(b.name));
-      renderGroup('canList',[...normal,...special], false);
+      renderGroup('canList', [...normal,...special], false);
     }
 
-    // Render a single list
     function renderGroup(id, list, isKeg) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
       list.forEach(item => {
         const li = document.createElement('li');
 
-        // Color-coding for kegs
+        // background colours for kegs
         if (isKeg) {
-          if (/20|EXP|EXPORT/i.test(item.unit))      li.style.backgroundColor = 'rgba(128,0,0,0.2)';
-          else if (/30/.test(item.unit))             li.style.backgroundColor = 'rgba(255,255,0,0.2)';
-          else if (/50/.test(item.unit))             li.style.backgroundColor = 'rgba(128,128,128,0.2)';
+          if (/(20|EXP|EXPORT)/i.test(item.unit))      li.style.backgroundColor = 'rgba(128,0,0,0.2)';
+          else if (/30/.test(item.unit))               li.style.backgroundColor = 'rgba(255,255,0,0.2)';
+          else if (/50/.test(item.unit))               li.style.backgroundColor = 'rgba(128,128,128,0.2)';
         }
 
-        // Name + unit
+        // name
         const spanN = document.createElement('span');
         spanN.className   = 'name';
         spanN.textContent = item.name;
-        if (!isKeg && item.rawName?.includes('SIDE PIECE GIN // 42% 6X700ML')) {
+        if (!isKeg && item.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')) {
           spanN.style.fontWeight = 'bold';
         }
 
+        // unit
         const spanU = document.createElement('span');
         spanU.className   = 'unit';
         spanU.textContent = item.unit;
 
-        // Initial + carry-forward
+        // initial + carry-forward
         const spanI = document.createElement('span');
         spanI.className   = 'initial';
         spanI.textContent = item.initialCount;
         const btnT = document.createElement('button');
-        btnT.className  = 'tick';
-        btnT.innerText  = '✔️';
-        btnT.title      = 'Carry forward';
-        btnT.onclick    = () => { item.quantity = item.initialCount; renderLists(); };
+        btnT.className = 'tick';
+        btnT.innerText = '✔️';
+        btnT.title     = 'Carry forward';
+        btnT.onclick   = () => { item.quantity = item.initialCount; renderLists(); };
 
-        // Qty controls
-        const ctr = document.createElement('span');
-        ctr.className = 'qty-control';
-        const dec = document.createElement('button');
-        dec.innerText = '−';
+        // qty controls
+        const ctr = document.createElement('span'); ctr.className = 'qty-control';
+        const dec = document.createElement('button'); dec.innerText = '−';
         dec.onclick   = () => { let q=+item.quantity||0; item.quantity = Math.max(0,q-1); renderLists(); };
         const inp = document.createElement('input');
-        inp.type      = 'number';
-        inp.value     = item.quantity;
+        inp.type      = 'number'; inp.value = item.quantity;
         inp.oninput   = e => { item.quantity = e.target.value; };
-        const inc = document.createElement('button');
-        inc.innerText = '+';
+        const inc = document.createElement('button'); inc.innerText = '+';
         inc.onclick   = () => { let q=+item.quantity||0; item.quantity = q+1; renderLists(); };
         ctr.append(dec, inp, inc);
 
-        // Trash (3× → zero)
+        // trash (3× → "0")
         const btnC = document.createElement('button');
         btnC.className = 'clear';
         btnC.innerText = '🗑️';
         btnC.onclick   = () => {
           item.trashClicks++;
           if (item.trashClicks >= 3) {
-            item.quantity    = '0';
+            item.quantity = '0';
             item.trashClicks = 0;
           }
           renderLists();
@@ -185,21 +182,21 @@
       });
     }
 
-    // Submit & archive
+    // COMPLETE → send ALL touched rows (including zeros)
     document.getElementById('completeBtn').onclick = async () => {
       const out = items
         .filter(i => i.quantity !== '')
         .map(i => ({ id: i.id, quantity: i.quantity }));
-      const resp = await fetch(API,{
+      const res = await fetch(API, {
         method: 'POST',
         headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ name: userName, stock: out })
       });
-      const { success } = await resp.json();
+      const { success } = await res.json();
       alert(success ? '✅ Saved!' : '❌ Error');
       // reload
       document.getElementById('loading').style.display = 'block';
-      document.getElementById('lists').style.display = 'none';
+      document.getElementById('lists').style.display  = 'none';
       loadStock();
     };
   </script>
