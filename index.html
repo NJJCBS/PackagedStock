@@ -12,15 +12,13 @@
     ul { list-style:none; padding:0; }
     li { display:flex; align-items:center; margin:6px 0; }
 
-    /* remove native spinners */
-    .qty-control input[type=number]::-webkit-outer-spin-button,
-    .qty-control input[type=number]::-webkit-inner-spin-button {
+    /* remove native number‐input arrows */
+    .qty-control input::-webkit-outer-spin-button,
+    .qty-control input::-webkit-inner-spin-button {
       -webkit-appearance: none;
       margin: 0;
     }
-    .qty-control input[type=number] {
-      -moz-appearance: textfield;
-    }
+    .qty-control input { -moz-appearance: textfield; }
 
     .name { flex:1; font-size:1rem; }
     .unit { font-size:0.7rem; color:#555; margin-left:6px; }
@@ -29,7 +27,9 @@
       background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem;
     }
     .qty-control { display:flex; align-items:center; margin-left:8px; }
-    .qty-control input { width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px; }
+    .qty-control input {
+      width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px;
+    }
     #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer; }
     #loading { font-style:italic; }
   </style>
@@ -47,163 +47,119 @@
 
   <script>
     const API_URL = 'https://script.google.com/macros/s/AKfycbyJT539HNbZcMqXVm_lXB1lwD1VyFd-mVG-q_nCZaKOKc4zxn7Y38jg_u1hpu3g7q7n/exec';
-    let rawStock = [];
+    let items = [];
 
-    // current month abbreviation, e.g. "JUN"
+    // current month abbr, e.g. "JUN"
     const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
     const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
     function formatToday() {
       const d = new Date();
-      const dd = String(d.getDate()).padStart(2,'0');
-      const mm = String(d.getMonth()+1).padStart(2,'0');
-      const yy = String(d.getFullYear()).slice(-2);
-      return `${dd}/${mm}/${yy}`;
+      return `${String(d.getDate()).padStart(2,'0')}/${
+        String(d.getMonth()+1).padStart(2,'0')}/${
+        String(d.getFullYear()).slice(-2)}`;
     }
 
     async function loadStock() {
-      try {
-        document.getElementById('date').textContent = ' ' + formatToday();
-        const res = await fetch(API_URL);
-        const { stock } = await res.json();
-        rawStock = stock;
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-        renderLists();
-        document.getElementById('completeBtn').onclick = complete;
-      } catch (err) {
-        console.error(err);
-        document.getElementById('loading').textContent = 'Error loading data.';
-      }
-    }
-
-    function cleanItem(item) {
-      let raw = (item.rawName||'').trim();
-      if (!raw) return null;
-      // strip leading "NN. "
-      raw = raw.replace(/^\d{2}\.\s*/, '');
-      // drop anything after "//"
-      const [namePart, infoPart=''] = raw.split('//').map(s=>s.trim());
-      // skip if prefix is a month ≠ current
-      const prefix = namePart.slice(0,3).toUpperCase();
-      if (MONTHS.includes(prefix) && prefix !== curMon) return null;
-      // extract unit from infoPart (drop up to "%")
-      const unit = infoPart.replace(/.*?%\s*/, '');
-      return {
-        cleanName: namePart,
-        unit,
-        initialCount: item.initialCount,
-        quantity: item.quantity
-      };
+      document.getElementById('date').textContent = ' ' + formatToday();
+      const res = await fetch(API_URL);
+      const { stock } = await res.json();
+      // build persistent items[], filtering months ≠ current
+      items = stock.reduce((arr, item) => {
+        let raw = (item.rawName||'').trim();
+        if (!raw) return arr;
+        raw = raw.replace(/^\d{2}\.\s*/, '');          // drop "02. "
+        const [namePart, infoPart=''] = raw.split('//').map(s=>s.trim());
+        const prefix = namePart.slice(0,3).toUpperCase();
+        if (MONTHS.includes(prefix) && prefix !== curMon) return arr;
+        const unit = infoPart.replace(/.*?%\s*/, '');
+        arr.push({
+          name: namePart,
+          unit,
+          initialCount: item.initialCount,
+          quantity: item.quantity
+        });
+        return arr;
+      }, []);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      renderLists();
+      document.getElementById('completeBtn').onclick = complete;
     }
 
     function renderLists() {
-      const kegs = [], cans = [];
-      rawStock.forEach(item => {
-        const c = cleanItem(item);
-        if (!c) return;
-        if (c.unit.toUpperCase().includes('KEG')) kegs.push(c);
-        else if (c.unit.toUpperCase().includes('ML')) cans.push(c);
-      });
+      const kegs = items.filter(i => i.unit.toUpperCase().includes('KEG'));
+      const cans = items.filter(i => i.unit.toUpperCase().includes('ML'));
       renderGroup('kegList', kegs);
       renderGroup('canList', cans);
     }
 
-    function renderGroup(id, items) {
+    function renderGroup(id, list) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
-      items.forEach(item => {
+      list.forEach((item, i) => {
         const li = document.createElement('li');
-
-        // name + unit
+        // name+unit
         const spanName = document.createElement('span');
-        spanName.className = 'name';
-        spanName.textContent = item.cleanName;
-        li.append(spanName);
-
+        spanName.className = 'name'; spanName.textContent = item.name;
         const spanUnit = document.createElement('span');
-        spanUnit.className = 'unit';
-        spanUnit.textContent = item.unit;
-        li.append(spanUnit);
-
+        spanUnit.className = 'unit'; spanUnit.textContent = item.unit;
+        li.append(spanName, spanUnit);
         // initial count
         const spanInit = document.createElement('span');
         spanInit.className = 'initial';
         spanInit.textContent = item.initialCount;
         li.append(spanInit);
-
         // tick
         const tick = document.createElement('button');
-        tick.className = 'tick';
-        tick.innerText = '✔️';
+        tick.className = 'tick'; tick.innerText = '✔️';
         tick.title = 'Carry forward';
-        tick.onclick = () => {
-          item.quantity = item.initialCount;
-          renderLists();
-        };
+        tick.onclick = () => { item.quantity = item.initialCount; renderLists(); };
         li.append(tick);
-
         // qty controls
         const ctr = document.createElement('span');
         ctr.className = 'qty-control';
         const btnM = document.createElement('button');
         btnM.innerText = '−';
         btnM.onclick = () => {
-          const q = parseInt(item.quantity)||0;
-          item.quantity = Math.max(0,q-1);
+          let q = parseInt(item.quantity)||0;
+          item.quantity = Math.max(0, q-1);
           renderLists();
         };
         const inp = document.createElement('input');
-        inp.type = 'number';
-        inp.value = item.quantity;
-        inp.oninput = e => item.quantity = e.target.value;
+        inp.type = 'number'; inp.value = item.quantity;
+        inp.oninput = e => { item.quantity = e.target.value; };
         const btnP = document.createElement('button');
         btnP.innerText = '+';
         btnP.onclick = () => {
-          const q = parseInt(item.quantity)||0;
+          let q = parseInt(item.quantity)||0;
           item.quantity = q+1;
           renderLists();
         };
         ctr.append(btnM, inp, btnP);
         li.append(ctr);
-
         // clear
         const clr = document.createElement('button');
-        clr.className = 'clear';
-        clr.innerText = '🗑️';
-        clr.onclick = () => {
-          item.quantity = '';
-          renderLists();
-        };
+        clr.className = 'clear'; clr.innerText = '🗑️';
+        clr.onclick = () => { item.quantity = ''; renderLists(); };
         li.append(clr);
-
         ul.append(li);
       });
     }
 
     async function complete() {
-      const out = [];
-      ['kegList','canList'].forEach(id => {
-        document.getElementById(id).childNodes.forEach(li => {
-          const name = li.querySelector('.name').textContent;
-          const unit = li.querySelector('.unit').textContent;
-          const qty  = li.querySelector('input').value;
-          out.push({ name: `${name} // ${unit}`, quantity: qty });
-        });
+      const out = items.map(i => ({
+        name: `${i.name} // ${i.unit}`,
+        quantity: i.quantity
+      }));
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ stock: out })
       });
-      try {
-        const res = await fetch(API_URL, {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({stock: out})
-        });
-        const { success } = await res.json();
-        alert(success ? '✅ Saved!' : '❌ Error');
-        loadStock();
-      } catch (err) {
-        console.error(err);
-        alert('Error saving data.');
-      }
+      const { success } = await res.json();
+      alert(success ? '✅ Saved!' : '❌ Error');
+      loadStock();
     }
 
     window.onload = loadStock;
