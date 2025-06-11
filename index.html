@@ -26,6 +26,23 @@
       width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px;
     }
     #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer }
+
+    /* Spinner */
+    .spinner {
+      border: 4px solid rgba(0,0,0,0.1);
+      border-top: 4px solid #555;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      display: none;
+      vertical-align: middle;
+      margin-left: 8px;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -47,6 +64,7 @@
       <h2>CANS / CASES</h2>
       <ul id="canList"></ul>
       <button id="completeBtn">Complete</button>
+      <span id="spinner" class="spinner"></span>
     </div>
   </div>
 
@@ -75,60 +93,62 @@
       document.getElementById('date').textContent = formatToday() + ' - ' + userName;
       const res = await fetch(API);
       const { stock } = await res.json();
-
       const curMon = new Date().toLocaleString('en-US',{month:'short'}).toUpperCase();
 
       items = stock.reduce((arr, item) => {
-        const raw = (item.rawName || '').replace(/^\d+\.\s*/, '');
+        const raw = (item.rawName||'').replace(/^\d+\.\s*/, '');
         const [namePart, infoPart=''] = raw.split('//').map(s=>s.trim());
         const prefix = namePart.slice(0,3).toUpperCase();
         if (MONTHS.includes(prefix) && prefix !== curMon) return arr;
         const unit = infoPart.replace(/^\d+(\.\d+)?%\s*/, '');
         arr.push({
-          id:          item.id,
-          rawName:     item.rawName,
-          name:        namePart,
-          unit:        unit,
-          initialCount:item.initialCount,
-          quantity:    item.quantity,
-          trashClicks: 0
+          id:           item.id,
+          rawName:      item.rawName,
+          name:         namePart,
+          unit:         unit,
+          initialCount: item.initialCount,
+          quantity:     item.quantity,
+          trashClicks:  0
         });
         return arr;
       }, []);
 
       document.getElementById('loading').style.display = 'none';
       document.getElementById('lists').style.display  = 'block';
-      
       renderLists();
     }
 
     function renderLists() {
       // Kegs
       const kegs = items.filter(i=>/KEG/i.test(i.unit));
-      const by20 = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const by30 = kegs.filter(i=>/30/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const by50 = kegs.filter(i=>/50/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const other= kegs.filter(i=>!/(20|EXP|EXPORT|30|50)/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
+      const by20 = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
+      const by30 = kegs.filter(i=>/30/.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
+      const by50 = kegs.filter(i=>/50/.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
+      const other= kegs.filter(i=>!/(20|EXP|EXPORT|30|50)/i.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
       renderGroup('kegList',[...by20,...by30,...by50,...other], true);
 
       // Cans
       const cansAll = items.filter(i=>!/KEG/i.test(i.unit));
       const special = cansAll.filter(i=>i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML'));
-      const normal  = cansAll.filter(i=>!special.includes(i)).sort((a,b)=>a.name.localeCompare(b.name));
+      const normal  = cansAll.filter(i=>!special.includes(i))
+                             .sort((a,b)=>a.name.localeCompare(b.name));
       renderGroup('canList',[...normal,...special], false);
     }
 
     function renderGroup(id, list, isKeg) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
-
       list.forEach(item => {
         const li = document.createElement('li');
 
         // color‐coding
         if (isKeg) {
-          if (/(20|EXP|EXPORT)/i.test(item.unit))      li.style.backgroundColor = 'rgba(255,182,193,0.3)';  // light pink
-          else if (/30/.test(item.unit))               li.style.backgroundColor = 'rgba(255,255,0,0.1)';  // lighter yellow
+          if (/(20|EXP|EXPORT)/i.test(item.unit))      li.style.backgroundColor = 'rgba(255,182,193,0.3)';
+          else if (/30/.test(item.unit))               li.style.backgroundColor = 'rgba(255,255,0,0.1)';
           else if (/50/.test(item.unit))               li.style.backgroundColor = 'rgba(128,128,128,0.2)';
         }
 
@@ -152,61 +172,56 @@
         const spanI = document.createElement('span');
         spanI.className   = 'initial';
         spanI.textContent = item.initialCount;
-
         const btnT = document.createElement('button');
         btnT.className = 'tick';
         btnT.innerText = '✔️';
         btnT.title     = 'Carry forward';
-        btnT.onclick   = e => { e.stopPropagation(); item.quantity = item.initialCount; renderLists(); };
+        btnT.onclick   = e => {
+          e.stopPropagation();
+          item.quantity = item.initialCount;
+          renderLists();
+        };
 
         // qty controls
-        const ctr = document.createElement('span');
-        ctr.className = 'qty-control';
-
-        const dec = document.createElement('button');
-        dec.innerText = '−';
-        dec.onclick   = e => { 
+        const ctr = document.createElement('span'); ctr.className = 'qty-control';
+        const dec = document.createElement('button'); dec.innerText = '−';
+        dec.onclick = e => {
           e.stopPropagation();
           let q = +item.quantity||0;
           item.quantity = Math.max(0,q-1);
           renderLists();
         };
-
         const inp = document.createElement('input');
-        inp.type      = 'number';
-        inp.value     = item.quantity;
-        inp.oninput   = e => { e.stopPropagation(); item.quantity = e.target.value; };
-
-        const inc = document.createElement('button');
-        inc.innerText = '+';
-        inc.onclick   = e => {
+        inp.type    = 'number';
+        inp.value   = item.quantity;
+        inp.oninput = e => {
+          e.stopPropagation();
+          item.quantity = e.target.value;
+        };
+        const inc = document.createElement('button'); inc.innerText = '+';
+        inc.onclick = e => {
           e.stopPropagation();
           let q = +item.quantity||0;
           item.quantity = q+1;
           renderLists();
         };
-
         ctr.append(dec, inp, inc);
 
-        // trash
+        // trash (1× clear, 3× zero)
         const btnC = document.createElement('button');
         btnC.className = 'clear';
         btnC.innerText = '🗑️';
         btnC.onclick = e => {
-  e.stopPropagation();
-  // increment click count
-  item.trashClicks = (item.trashClicks || 0) + 1;
-
-  if (item.trashClicks === 1) {
-    // first click: empty the field
-    item.quantity = '';
-  } else if (item.trashClicks >= 3) {
-    // third click: enter "0" and reset counter
-    item.quantity    = '0';
-    item.trashClicks = 0;
-  }
-  renderLists();
-};
+          e.stopPropagation();
+          item.trashClicks = (item.trashClicks||0) + 1;
+          if (item.trashClicks === 1) {
+            item.quantity = '';
+          } else if (item.trashClicks >= 3) {
+            item.quantity    = '0';
+            item.trashClicks = 0;
+          }
+          renderLists();
+        };
 
         li.append(spanN, spanU, spanI, btnT, ctr, btnC);
         ul.append(li);
@@ -214,16 +229,30 @@
     }
 
     document.getElementById('completeBtn').onclick = async () => {
+      const btn     = document.getElementById('completeBtn');
+      const spinner = document.getElementById('spinner');
+
+      // show spinner
+      btn.disabled       = true;
+      spinner.style.display = 'inline-block';
+
       const out = items
         .filter(i => i.quantity !== '')
         .map(i => ({ id: i.id, quantity: i.quantity }));
-      const res = await fetch(API,{
+
+      const res = await fetch(API, {
         method: 'POST',
         headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ name: userName, stock: out })
       });
       const { success } = await res.json();
+
+      // hide spinner
+      spinner.style.display = 'none';
+      btn.disabled       = false;
+
       alert(success ? '✅ Saved!' : '❌ Error');
+
       // reload
       document.getElementById('loading').style.display = 'block';
       document.getElementById('lists').style.display  = 'none';
