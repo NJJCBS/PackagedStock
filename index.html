@@ -14,7 +14,10 @@
     #loading { font-style:italic }
     h2 { margin-top:1.5rem; font-size:1.1rem }
     ul { list-style:none; padding:0 }
-    li { display:flex; align-items:center; margin:6px 0; padding:4px; cursor:text }
+    li {
+      display:flex; align-items:center; margin:6px 0; padding:4px;
+      cursor:text;
+    }
     .name { flex:1; font-size:1rem }
     .unit { font-size:0.7rem; color:#555; margin-left:6px }
     .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right }
@@ -25,29 +28,36 @@
     .qty-control input {
       width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px;
     }
-    #totals { margin-top:16px; font-size:0.95rem; line-height:1.4 }
-    #completeBtn { margin-top:12px; padding:10px 20px; font-size:1rem; cursor:pointer }
+    #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer }
+
+    /* Spinner */
     .spinner {
-      border:4px solid rgba(0,0,0,0.1);
-      border-top:4px solid #555;
-      border-radius:50%;
-      width:24px; height:24px;
-      animation:spin 1s linear infinite;
-      display:none; vertical-align:middle; margin-left:8px;
+      border: 4px solid rgba(0,0,0,0.1);
+      border-top: 4px solid #555;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      display: none;
+      vertical-align: middle;
+      margin-left: 8px;
     }
-    @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
 
-  <!-- LOGIN -->
+  <!-- LOGIN SCREEN -->
   <div id="login">
     <h1>Welcome to Brewery Stocktake</h1>
     <input id="nameInput" placeholder="Enter your name…" />
     <button id="startBtn">Continue</button>
   </div>
 
-  <!-- APP -->
+  <!-- MAIN APP -->
   <div id="app">
     <h1>📋 Stocktake <span id="date"></span></h1>
     <div id="loading">Loading…</div>
@@ -56,28 +66,6 @@
       <ul id="kegList"></ul>
       <h2>CANS / CASES</h2>
       <ul id="canList"></ul>
-
-      <!-- TOTALS -->
-      <div id="totals">
-        <strong>Keg summaries:</strong>
-        <div id="totals-kegs">
-          Total 20L kegs: 0<br>
-          Total 30L kegs: 0<br>
-          Total 50L kegs: 0<br>
-          Total keg volume: 0 L
-        </div>
-        <strong>Can summaries:</strong>
-        <div id="totals-cans">
-          Total 375ml Cans: 0<br>
-          Total 440ml Cans: 0<br>
-          Total can volume: 0 L
-        </div>
-        <strong>Overall:</strong>
-        <div id="totals-packaged">
-          Total packaged volume on site: 0 L
-        </div>
-      </div>
-
       <button id="completeBtn">Complete</button>
       <span id="spinner" class="spinner"></span>
     </div>
@@ -95,7 +83,7 @@
               String(d.getFullYear()).slice(-2)}`;
     }
 
-    // LOGIN
+    // Login flow
     document.getElementById('startBtn').onclick = () => {
       const name = document.getElementById('nameInput').value.trim();
       if (!name) return alert('Please enter your name');
@@ -105,7 +93,7 @@
       loadStock();
     };
 
-    // LOAD DATA
+    // Fetch & parse sheet data
     async function loadStock() {
       document.getElementById('date').textContent = formatToday() + ' - ' + userName;
       const res = await fetch(API);
@@ -120,6 +108,7 @@
         const unit = infoPart.replace(/^\d+(\.\d+)?%\s*/, '');
         arr.push({
           id:           item.id,
+          rawName:      item.rawName,
           name:         namePart,
           unit:         unit,
           initialCount: item.initialCount,
@@ -132,28 +121,31 @@
       document.getElementById('loading').style.display = 'none';
       document.getElementById('lists').style.display  = 'block';
       renderLists();
-      updateTotals();             // initial totals from sheet data
     }
 
-    // RENDER
+    // Build lists
     function renderLists() {
       // Kegs
       const kegs = items.filter(i=>/KEG/i.test(i.unit));
-      const by20 = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const by30 = kegs.filter(i=>/30/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const by50 = kegs.filter(i=>/50/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
-      const other= kegs.filter(i=>!/(20|EXP|EXPORT|30|50)/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
+      const by20 = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
+      const by30 = kegs.filter(i=>/30/.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
+      const by50 = kegs.filter(i=>/50/.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
+      const other= kegs.filter(i=>!/(20|EXP|EXPORT|30|50)/i.test(i.unit))
+                       .sort((a,b)=>a.name.localeCompare(b.name));
       renderGroup('kegList',[...by20,...by30,...by50,...other], true);
 
       // Cans
       const cansAll = items.filter(i=>!/KEG/i.test(i.unit));
       const special = cansAll.filter(i=>i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML'));
-      const normal  = cansAll.filter(i=>!special.includes(i)).sort((a,b)=>a.name.localeCompare(b.name));
+      const normal  = cansAll.filter(i=>!special.includes(i))
+                             .sort((a,b)=>a.name.localeCompare(b.name));
       renderGroup('canList',[...normal,...special], false);
-
-      updateTotals();             // recalc totals from initialCount
     }
 
+    // Render a section
     function renderGroup(id, list, isKeg) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
@@ -161,55 +153,82 @@
       list.forEach(item => {
         const li = document.createElement('li');
 
-        // color coding
+        // Color coding
         if (isKeg) {
           if (/(20|EXP|EXPORT)/i.test(item.unit))      li.style.backgroundColor = 'rgba(255,182,193,0.3)';
           else if (/30/.test(item.unit))               li.style.backgroundColor = 'rgba(255,255,0,0.1)';
           else if (/50/.test(item.unit))               li.style.backgroundColor = 'rgba(128,128,128,0.2)';
         }
 
-        // focus input on row click
+        // Focus input when tapping row
         li.addEventListener('click', () => inp.focus());
 
-        // name & unit
+        // Name
         const spanN = document.createElement('span');
         spanN.className   = 'name';
         spanN.textContent = item.name;
         if (!isKeg && item.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')) {
           spanN.style.fontWeight = 'bold';
         }
+
+        // Unit
         const spanU = document.createElement('span');
         spanU.className   = 'unit';
         spanU.textContent = item.unit;
 
-        // initial count + carry-forward
+        // Initial + carry
         const spanI = document.createElement('span');
         spanI.className   = 'initial';
         spanI.textContent = item.initialCount;
         const btnT = document.createElement('button');
-        btnT.className = 'tick'; btnT.innerText = '✔️';
+        btnT.className = 'tick';
+        btnT.innerText = '✔️';
         btnT.title     = 'Carry forward';
-        btnT.onclick   = e => { e.stopPropagation(); item.quantity = item.initialCount; renderLists(); };
+        btnT.onclick   = e => {
+          e.stopPropagation();
+          item.quantity = item.initialCount;
+          renderLists();
+        };
 
-        // qty controls
+        // Quantity controls
         const ctr = document.createElement('span'); ctr.className = 'qty-control';
         const dec = document.createElement('button'); dec.innerText = '−';
-        dec.onclick = e => { e.stopPropagation(); let q=+item.quantity||0; item.quantity = Math.max(0,q-1); };
+        dec.onclick = e => {
+          e.stopPropagation();
+          let q=+item.quantity||0;
+          item.quantity = Math.max(0,q-1);
+          renderLists();
+        };
         const inp = document.createElement('input');
-        inp.type    = 'number'; inp.value = item.quantity;
-        inp.oninput = e => { e.stopPropagation(); item.quantity = e.target.value; };
+        inp.type    = 'number';
+        inp.value   = item.quantity;
+        inp.oninput = e => {
+          e.stopPropagation();
+          item.quantity = e.target.value;
+        };
         const inc = document.createElement('button'); inc.innerText = '+';
-        inc.onclick = e => { e.stopPropagation(); let q=+item.quantity||0; item.quantity = q+1; };
+        inc.onclick = e => {
+          e.stopPropagation();
+          let q=+item.quantity||0;
+          item.quantity = q+1;
+          renderLists();
+        };
         ctr.append(dec, inp, inc);
 
-        // trash button
+        // Trash: 1× clear, 3× zero
         const btnC = document.createElement('button');
-        btnC.className='clear'; btnC.innerText='🗑️';
+        btnC.className = 'clear';
+        btnC.innerText = '🗑️';
         btnC.onclick = e => {
           e.stopPropagation();
           item.trashClicks = (item.trashClicks||0) + 1;
-          if (item.trashClicks===1) item.quantity='';
-          else if (item.trashClicks>=3) { item.quantity='0'; item.trashClicks=0; }
+          if (item.trashClicks === 1) {
+            item.quantity = '';
+          } else if (item.trashClicks >= 3) {
+            item.quantity    = '0';
+            item.trashClicks = 0;
+          }
+          renderLists();
         };
 
         li.append(spanN, spanU, spanI, btnT, ctr, btnC);
@@ -217,53 +236,30 @@
       });
     }
 
-    // TOTALS from initialCount only
-    function updateTotals() {
-      const sumInit = fn => items.filter(fn).reduce((s,i)=> s + (i.initialCount||0), 0);
-
-      const total20 = sumInit(i=>/20|EXP|EXPORT/i.test(i.unit));
-      const total30 = sumInit(i=>/30/.test(i.unit));
-      const total50 = sumInit(i=>/50/.test(i.unit));
-      const kegVol  = total20*20 + total30*30 + total50*50;
-
-      const total375 = sumInit(i=>/375ML/i.test(i.unit));
-      const total440 = sumInit(i=>/440ML/i.test(i.unit));
-      const canVol   = Math.round(total375*8.25 + total440*7.04);
-
-      const pkgVol = kegVol + canVol;
-
-      document.getElementById('totals-kegs').innerHTML =
-        `Total 20L kegs: ${total20}<br>
-         Total 30L kegs: ${total30}<br>
-         Total 50L kegs: ${total50}<br>
-         Total keg volume: ${kegVol} L`;
-      document.getElementById('totals-cans').innerHTML =
-        `Total 375ml Cans: ${total375}<br>
-         Total 440ml Cans: ${total440}<br>
-         Total can volume: ${canVol} L`;
-      document.getElementById('totals-packaged').textContent =
-        `Total packaged volume on site: ${pkgVol} L`;
-    }
-
-    // COMPLETE
+    // Complete handler with spinner + reload
     document.getElementById('completeBtn').onclick = async () => {
       const btn     = document.getElementById('completeBtn');
       const spinner = document.getElementById('spinner');
-      btn.disabled = true; spinner.style.display = 'inline-block';
 
+      // show spinner
+      btn.disabled        = true;
+      spinner.style.display = 'inline-block';
+
+      // build payload
       const out = items
-        .filter(i=> i.quantity!=='')
-        .map(i=>({ id: i.id, quantity: i.quantity }));
+        .filter(i => i.quantity !== '')
+        .map(i => ({ id: i.id, quantity: i.quantity }));
 
-      const res = await fetch(API,{
-        method:'POST',
+      const res = await fetch(API, {
+        method: 'POST',
         headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ name:userName, stock:out })
+        body: JSON.stringify({ name: userName, stock: out })
       });
       const { success } = await res.json();
 
+      // hide spinner
       spinner.style.display = 'none';
-      btn.disabled = false;
+      btn.disabled        = false;
 
       if (success) {
         alert('✅ Saved!');
