@@ -60,16 +60,22 @@
       <!-- TOTALS -->
       <div id="totals">
         <strong>Keg summaries:</strong>
-        <div id="totals-kegs">Total 20L kegs: 0<br>
-                             Total 30L kegs: 0<br>
-                             Total 50L kegs: 0<br>
-                             Total keg volume: 0 L</div>
+        <div id="totals-kegs">
+          Total 20L kegs: 0<br>
+          Total 30L kegs: 0<br>
+          Total 50L kegs: 0<br>
+          Total keg volume: 0 L
+        </div>
         <strong>Can summaries:</strong>
-        <div id="totals-cans">Total 375ml Cans: 0<br>
-                              Total 440ml Cans: 0<br>
-                              Total can volume: 0 L</div>
+        <div id="totals-cans">
+          Total 375ml Cans: 0<br>
+          Total 440ml Cans: 0<br>
+          Total can volume: 0 L
+        </div>
         <strong>Overall:</strong>
-        <div id="totals-packaged">Total packaged volume on site: 0 L</div>
+        <div id="totals-packaged">
+          Total packaged volume on site: 0 L
+        </div>
       </div>
 
       <button id="completeBtn">Complete</button>
@@ -99,7 +105,7 @@
       loadStock();
     };
 
-    // LOAD & PARSE
+    // LOAD DATA
     async function loadStock() {
       document.getElementById('date').textContent = formatToday() + ' - ' + userName;
       const res = await fetch(API);
@@ -126,12 +132,12 @@
       document.getElementById('loading').style.display = 'none';
       document.getElementById('lists').style.display  = 'block';
       renderLists();
-      updateTotals();
+      updateTotals();             // initial totals from sheet data
     }
 
     // RENDER
     function renderLists() {
-      // Kegs grouping
+      // Kegs
       const kegs = items.filter(i=>/KEG/i.test(i.unit));
       const by20 = kegs.filter(i=>/20|EXP|EXPORT/i.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
       const by30 = kegs.filter(i=>/30/.test(i.unit)).sort((a,b)=>a.name.localeCompare(b.name));
@@ -141,68 +147,69 @@
 
       // Cans
       const cansAll = items.filter(i=>!/KEG/i.test(i.unit));
-      const special = cansAll.filter(i=>i.unit.match(/375ml/i)?false:true)  // keep all then sort
-                        .filter(i=>i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML'));
-      const normal = cansAll.filter(i=>!special.includes(i)).sort((a,b)=>a.name.localeCompare(b.name));
+      const special = cansAll.filter(i=>i.rawName.includes('SIDE PIECE GIN // 42% 6X700ML'));
+      const normal  = cansAll.filter(i=>!special.includes(i)).sort((a,b)=>a.name.localeCompare(b.name));
       renderGroup('canList',[...normal,...special], false);
 
-      updateTotals();
+      updateTotals();             // recalc totals from initialCount
     }
 
-    // RENDER ONE GROUP
     function renderGroup(id, list, isKeg) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
+
       list.forEach(item => {
         const li = document.createElement('li');
-        // color
+
+        // color coding
         if (isKeg) {
           if (/(20|EXP|EXPORT)/i.test(item.unit))      li.style.backgroundColor = 'rgba(255,182,193,0.3)';
           else if (/30/.test(item.unit))               li.style.backgroundColor = 'rgba(255,255,0,0.1)';
           else if (/50/.test(item.unit))               li.style.backgroundColor = 'rgba(128,128,128,0.2)';
         }
-        // focus
-        li.addEventListener('click', ()=> inp.focus());
+
+        // focus input on row click
+        li.addEventListener('click', () => inp.focus());
 
         // name & unit
         const spanN = document.createElement('span');
         spanN.className   = 'name';
         spanN.textContent = item.name;
-        if (!isKeg && item.rawName && item.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')) {
+        if (!isKeg && item.rawName.includes('SIDE PIECE GIN // 42% 6X700ML')) {
           spanN.style.fontWeight = 'bold';
         }
         const spanU = document.createElement('span');
         spanU.className   = 'unit';
         spanU.textContent = item.unit;
 
-        // initial + tick
+        // initial count + carry-forward
         const spanI = document.createElement('span');
         spanI.className   = 'initial';
         spanI.textContent = item.initialCount;
         const btnT = document.createElement('button');
         btnT.className = 'tick'; btnT.innerText = '✔️';
         btnT.title     = 'Carry forward';
-        btnT.onclick   = e=>{ e.stopPropagation(); item.quantity=item.initialCount; renderLists(); };
+        btnT.onclick   = e => { e.stopPropagation(); item.quantity = item.initialCount; renderLists(); };
 
         // qty controls
-        const ctr = document.createElement('span'); ctr.className='qty-control';
-        const dec = document.createElement('button'); dec.innerText='−';
-        dec.onclick = e=>{ e.stopPropagation(); let q=+item.quantity||0; item.quantity=Math.max(0,q-1); updateTotals(); };
+        const ctr = document.createElement('span'); ctr.className = 'qty-control';
+        const dec = document.createElement('button'); dec.innerText = '−';
+        dec.onclick = e => { e.stopPropagation(); let q=+item.quantity||0; item.quantity = Math.max(0,q-1); };
         const inp = document.createElement('input');
-        inp.type    = 'number'; inp.value=item.quantity;
-        inp.oninput = e=>{ e.stopPropagation(); item.quantity=e.target.value; updateTotals(); };
-        const inc = document.createElement('button'); inc.innerText='+';
-        inc.onclick = e=>{ e.stopPropagation(); let q=+item.quantity||0; item.quantity=q+1; updateTotals(); };
+        inp.type    = 'number'; inp.value = item.quantity;
+        inp.oninput = e => { e.stopPropagation(); item.quantity = e.target.value; };
+        const inc = document.createElement('button'); inc.innerText = '+';
+        inc.onclick = e => { e.stopPropagation(); let q=+item.quantity||0; item.quantity = q+1; };
         ctr.append(dec, inp, inc);
 
-        // trash
+        // trash button
         const btnC = document.createElement('button');
         btnC.className='clear'; btnC.innerText='🗑️';
-        btnC.onclick = e=>{ e.stopPropagation();
-          item.trashClicks=(item.trashClicks||0)+1;
-          if(item.trashClicks===1) item.quantity='';
-          else if(item.trashClicks>=3){item.quantity='0';item.trashClicks=0;}
-          updateTotals();
+        btnC.onclick = e => {
+          e.stopPropagation();
+          item.trashClicks = (item.trashClicks||0) + 1;
+          if (item.trashClicks===1) item.quantity='';
+          else if (item.trashClicks>=3) { item.quantity='0'; item.trashClicks=0; }
         };
 
         li.append(spanN, spanU, spanI, btnT, ctr, btnC);
@@ -210,28 +217,21 @@
       });
     }
 
-    // UPDATE TOTALS
+    // TOTALS from initialCount only
     function updateTotals() {
-      // helper to sum quantities
-      const sumQty = (filterFn) => items
-        .filter(filterFn)
-        .reduce((s,i)=> s + (Number(i.quantity)||0), 0);
+      const sumInit = fn => items.filter(fn).reduce((s,i)=> s + (i.initialCount||0), 0);
 
-      // kegs
-      const total20 = sumQty(i => /20|EXP|EXPORT/i.test(i.unit));
-      const total30 = sumQty(i => /30/.test(i.unit));
-      const total50 = sumQty(i => /50/.test(i.unit));
+      const total20 = sumInit(i=>/20|EXP|EXPORT/i.test(i.unit));
+      const total30 = sumInit(i=>/30/.test(i.unit));
+      const total50 = sumInit(i=>/50/.test(i.unit));
       const kegVol  = total20*20 + total30*30 + total50*50;
 
-      // cans
-      const total375 = sumQty(i => /375ML/i.test(i.unit));
-      const total440 = sumQty(i => /440ML/i.test(i.unit));
-      const canVol = Math.round(total375*8.25 + total440*7.04);
+      const total375 = sumInit(i=>/375ML/i.test(i.unit));
+      const total440 = sumInit(i=>/440ML/i.test(i.unit));
+      const canVol   = Math.round(total375*8.25 + total440*7.04);
 
-      // packaged
       const pkgVol = kegVol + canVol;
 
-      // display
       document.getElementById('totals-kegs').innerHTML =
         `Total 20L kegs: ${total20}<br>
          Total 30L kegs: ${total30}<br>
@@ -255,7 +255,7 @@
         .filter(i=> i.quantity!=='')
         .map(i=>({ id: i.id, quantity: i.quantity }));
 
-      const res = await fetch(API, {
+      const res = await fetch(API,{
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ name:userName, stock:out })
