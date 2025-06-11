@@ -14,15 +14,18 @@
     #loading { font-style:italic }
     h2 { margin-top:1.5rem; font-size:1.1rem }
     ul { list-style:none; padding:0 }
-    li { display:flex; align-items:center; margin:6px 0; padding:4px; cursor:text; }
+    li {
+      display:flex; align-items:center; margin:6px 0; padding:4px;
+      cursor:text;
+    }
     .name { flex:1; font-size:1rem }
     .unit { font-size:0.7rem; color:#555; margin-left:6px }
     .initial { opacity:0.3; margin-left:8px; width:30px; text-align:right }
-    .tick, .clear, .qty-control button { 
+    .tick, .clear, .qty-control button {
       background:none; border:none; cursor:pointer; padding:0 4px; font-size:1rem;
     }
     .qty-control { display:flex; align-items:center; margin-left:8px }
-    .qty-control input { 
+    .qty-control input {
       width:48px; text-align:center; font-family:Arial,sans-serif; margin:0 4px;
     }
     #completeBtn { margin-top:24px; padding:10px 20px; font-size:1rem; cursor:pointer }
@@ -69,7 +72,7 @@
   </div>
 
   <script>
-    const API = '/api/inventory';
+    const API    = '/api/inventory';
     const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
     let items = [], userName = '';
 
@@ -80,6 +83,7 @@
               String(d.getFullYear()).slice(-2)}`;
     }
 
+    // Login flow
     document.getElementById('startBtn').onclick = () => {
       const name = document.getElementById('nameInput').value.trim();
       if (!name) return alert('Please enter your name');
@@ -89,6 +93,7 @@
       loadStock();
     };
 
+    // Fetch & parse sheet data
     async function loadStock() {
       document.getElementById('date').textContent = formatToday() + ' - ' + userName;
       const res = await fetch(API);
@@ -118,6 +123,7 @@
       renderLists();
     }
 
+    // Build lists
     function renderLists() {
       // Kegs
       const kegs = items.filter(i=>/KEG/i.test(i.unit));
@@ -139,23 +145,25 @@
       renderGroup('canList',[...normal,...special], false);
     }
 
+    // Render a section
     function renderGroup(id, list, isKeg) {
       const ul = document.getElementById(id);
       ul.innerHTML = '';
+
       list.forEach(item => {
         const li = document.createElement('li');
 
-        // color‐coding
+        // Color coding
         if (isKeg) {
           if (/(20|EXP|EXPORT)/i.test(item.unit))      li.style.backgroundColor = 'rgba(255,182,193,0.3)';
           else if (/30/.test(item.unit))               li.style.backgroundColor = 'rgba(255,255,0,0.1)';
           else if (/50/.test(item.unit))               li.style.backgroundColor = 'rgba(128,128,128,0.2)';
         }
 
-        // focus input on row click
-        li.addEventListener('click', () => { inp.focus(); });
+        // Focus input when tapping row
+        li.addEventListener('click', () => inp.focus());
 
-        // name
+        // Name
         const spanN = document.createElement('span');
         spanN.className   = 'name';
         spanN.textContent = item.name;
@@ -163,12 +171,12 @@
           spanN.style.fontWeight = 'bold';
         }
 
-        // unit
+        // Unit
         const spanU = document.createElement('span');
         spanU.className   = 'unit';
         spanU.textContent = item.unit;
 
-        // initial + tick
+        // Initial + carry
         const spanI = document.createElement('span');
         spanI.className   = 'initial';
         spanI.textContent = item.initialCount;
@@ -182,12 +190,12 @@
           renderLists();
         };
 
-        // qty controls
+        // Quantity controls
         const ctr = document.createElement('span'); ctr.className = 'qty-control';
         const dec = document.createElement('button'); dec.innerText = '−';
         dec.onclick = e => {
           e.stopPropagation();
-          let q = +item.quantity||0;
+          let q=+item.quantity||0;
           item.quantity = Math.max(0,q-1);
           renderLists();
         };
@@ -201,13 +209,13 @@
         const inc = document.createElement('button'); inc.innerText = '+';
         inc.onclick = e => {
           e.stopPropagation();
-          let q = +item.quantity||0;
+          let q=+item.quantity||0;
           item.quantity = q+1;
           renderLists();
         };
         ctr.append(dec, inp, inc);
 
-        // trash (1× clear, 3× zero)
+        // Trash: 1× clear, 3× zero
         const btnC = document.createElement('button');
         btnC.className = 'clear';
         btnC.innerText = '🗑️';
@@ -228,14 +236,16 @@
       });
     }
 
+    // Complete handler with spinner + reload
     document.getElementById('completeBtn').onclick = async () => {
       const btn     = document.getElementById('completeBtn');
       const spinner = document.getElementById('spinner');
 
       // show spinner
-      btn.disabled       = true;
+      btn.disabled        = true;
       spinner.style.display = 'inline-block';
 
+      // build payload
       const out = items
         .filter(i => i.quantity !== '')
         .map(i => ({ id: i.id, quantity: i.quantity }));
@@ -249,14 +259,14 @@
 
       // hide spinner
       spinner.style.display = 'none';
-      btn.disabled       = false;
+      btn.disabled        = false;
 
-      alert(success ? '✅ Saved!' : '❌ Error');
-
-      // reload
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('lists').style.display  = 'none';
-      loadStock();
+      if (success) {
+        alert('✅ Saved!');
+        window.location.reload();
+      } else {
+        alert('❌ Error');
+      }
     };
   </script>
 
